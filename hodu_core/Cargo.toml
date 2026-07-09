@@ -1,0 +1,13 @@
+[package]
+name = "hodu_core"
+description = "hodu framework core: Tensor API over the kurumi engine."
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+kurumi = { path = "../../kurumi/kurumi", version = "0.2.0" }
+
+[lints]
+workspace = true

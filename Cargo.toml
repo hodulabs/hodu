@@ -1,0 +1,12 @@
+[workspace]
+members = ["hodu", "hodu_core"]
+resolver = "2"
+
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+repository = "https://github.com/hodulabs/hodu"
+license = "MIT OR Apache-2.0"
+
+[workspace.lints.clippy]
+excessive_precision = "allow"

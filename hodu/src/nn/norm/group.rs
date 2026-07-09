@@ -27,8 +27,7 @@ impl GroupNorm {
 
 impl Module for GroupNorm {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
-        let (n, groups, eps) = (x.node(), self.groups, self.eps);
-        let norm = x.ctx().build(|g| g.group_norm(n, groups, eps))?;
+        let norm = x.group_norm(self.groups, self.eps)?;
         channel_affine(&norm, &self.gamma, &self.beta)
     }
     fn parameters(&self) -> Vec<Param> {

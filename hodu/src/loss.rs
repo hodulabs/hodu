@@ -17,38 +17,32 @@ pub fn cross_entropy(logits: &Tensor, targets: &Tensor) -> Result<Tensor, Error>
 
 /// Mean absolute error `mean(|pred - target|)`.
 pub fn l1_loss(pred: &Tensor, target: &Tensor) -> Result<Tensor, Error> {
-    let (p, t) = (pred.node(), target.node());
-    pred.ctx().build(|g| g.l1_loss(p, t))?.mean_all()
+    pred.l1_loss(target)?.mean_all()
 }
 
 /// Huber loss (smooth L1): quadratic within `delta`, linear beyond, mean-reduced.
 pub fn huber_loss(pred: &Tensor, target: &Tensor, delta: f32) -> Result<Tensor, Error> {
-    let (p, t) = (pred.node(), target.node());
-    pred.ctx().build(|g| g.huber_loss(p, t, delta))?.mean_all()
+    pred.huber_loss(target, delta)?.mean_all()
 }
 
 /// Binary cross-entropy on probabilities `pred in (0,1)`, mean-reduced.
 pub fn bce_loss(pred: &Tensor, target: &Tensor) -> Result<Tensor, Error> {
-    let (p, t) = (pred.node(), target.node());
-    pred.ctx().build(|g| g.bce_loss(p, t))?.mean_all()
+    pred.bce_loss(target)?.mean_all()
 }
 
 /// Binary cross-entropy from raw `logits` (numerically stable), mean-reduced.
 pub fn bce_with_logits(logits: &Tensor, target: &Tensor) -> Result<Tensor, Error> {
-    let (l, t) = (logits.node(), target.node());
-    logits.ctx().build(|g| g.bce_with_logits(l, t))?.mean_all()
+    logits.bce_with_logits(target)?.mean_all()
 }
 
 /// Hinge loss `max(0, 1 - pred*target)` (`target in {-1,+1}`), mean-reduced.
 pub fn hinge_loss(pred: &Tensor, target: &Tensor) -> Result<Tensor, Error> {
-    let (p, t) = (pred.node(), target.node());
-    pred.ctx().build(|g| g.hinge_loss(p, t))?.mean_all()
+    pred.hinge_loss(target)?.mean_all()
 }
 
 /// KL divergence `sum(p * log(p/q))` (elementwise, mean-reduced).
 pub fn kl_div(p: &Tensor, q: &Tensor) -> Result<Tensor, Error> {
-    let (pn, qn) = (p.node(), q.node());
-    p.ctx().build(|g| g.kl_div(pn, qn))?.mean_all()
+    p.kl_div(q)?.mean_all()
 }
 
 /// Negative log-likelihood `mean(-sum(target * log_probs))` over the last (class)
@@ -56,8 +50,7 @@ pub fn kl_div(p: &Tensor, q: &Tensor) -> Result<Tensor, Error> {
 /// one-hot.
 pub fn nll_loss(log_probs: &Tensor, target: &Tensor) -> Result<Tensor, Error> {
     let axis = log_probs.rank().saturating_sub(1);
-    let (l, t) = (log_probs.node(), target.node());
-    log_probs.ctx().build(|g| g.nll_loss(l, t, axis))?.mean_all()
+    log_probs.nll_loss(target, axis)?.mean_all()
 }
 
 #[cfg(test)]

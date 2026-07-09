@@ -20,8 +20,7 @@ impl RmsNorm {
 impl Module for RmsNorm {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
         let axis = x.rank().saturating_sub(1);
-        let (n, eps) = (x.node(), self.eps);
-        let norm = x.ctx().build(|g| g.rmsnorm(n, axis, eps))?;
+        let norm = x.rmsnorm(axis, self.eps)?;
         norm.try_mul(self.gamma.tensor()) // (.., D) * (D,) broadcasts
     }
     fn parameters(&self) -> Vec<Param> {

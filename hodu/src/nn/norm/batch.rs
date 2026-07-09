@@ -15,8 +15,8 @@ use std::cell::Cell;
 
 use hodu_core::{Ctx, Error, NodeId, Tensor};
 
-use super::norm::channel_affine;
-use super::{Buffer, Module, Param};
+use super::channel_affine;
+use crate::nn::{Buffer, Module, Param};
 
 /// Batch norm for any `[N, C, ..]` (reduces every non-channel axis). `BatchNorm1d`
 /// (`[N,C]`/`[N,C,L]`) and `BatchNorm2d` (`[N,C,H,W]`) are the same math.

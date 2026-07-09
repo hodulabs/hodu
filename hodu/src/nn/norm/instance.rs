@@ -24,8 +24,7 @@ impl InstanceNorm {
 
 impl Module for InstanceNorm {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
-        let (n, eps) = (x.node(), self.eps);
-        let norm = x.ctx().build(|g| g.instance_norm(n, eps))?;
+        let norm = x.instance_norm(self.eps)?;
         channel_affine(&norm, &self.gamma, &self.beta)
     }
     fn parameters(&self) -> Vec<Param> {

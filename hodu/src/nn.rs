@@ -6,7 +6,6 @@ use hodu_core::{Error, Tensor};
 
 mod activation;
 mod attention;
-mod batchnorm;
 mod conv;
 mod dropout;
 mod embedding;
@@ -23,14 +22,13 @@ mod transformer;
 
 pub use activation::{Gelu, Relu, Sigmoid, Tanh};
 pub use attention::MultiHeadAttention;
-pub use batchnorm::{BatchNorm, BatchNorm1d, BatchNorm2d};
 pub use conv::Conv2d;
 pub use dropout::Dropout;
 pub use embedding::Embedding;
 pub use flatten::Flatten;
 pub use init::{kaiming_normal, normal, uniform, xavier_uniform};
 pub use linear::{Init, Linear};
-pub use norm::{GroupNorm, InstanceNorm, LayerNorm, RmsNorm};
+pub use norm::{BatchNorm, BatchNorm1d, BatchNorm2d, GroupNorm, InstanceNorm, LayerNorm, RmsNorm};
 pub use param::{Buffer, Param, QBuffer};
 pub use pool::{AvgPool2d, MaxPool2d};
 pub use quant::QuantLinear;

@@ -15,7 +15,7 @@ The split: kurumi's ops are strict (same shape, same dtype). hodu inserts broadc
 - **NumPy-ergonomic tensors.** Broadcasting and dtype promotion are inserted before the engine's strict ops, with operator overloading, reductions, activations, conv/pool, and attention as methods.
 - **A real `nn`.** Linear, Conv2d, pooling, Embedding, multi-head attention and transformer blocks, LSTM/GRU, LayerNorm/RmsNorm/Group/Instance/BatchNorm, Dropout, and Sequential -- composed through one `Module` trait.
 - **Training.** SGD/Adam/AdamW, LR schedulers, gradient clipping and accumulation, weight-only int8/int4 quantization, and the losses/inits you expect.
-- **Deploy artifact.** `.hodu` is a self-describing container: named params, non-learnable buffers (e.g. BatchNorm running stats), and optimizer state -- so save/load round-trips eval-mode behavior and resumes training.
+- **Deploy artifact.** `.hodu` is a self-describing container: named params, non-learnable buffers (e.g. BatchNorm running stats), and optimizer state -- so save/load round-trips eval-mode behavior and resumes training. `save_runnable` additionally writes the forward graph, so the artifact runs from the file alone.
 - **CPU and Metal.** The same static graph runs on the CPU reference or, on Apple Silicon, the Metal backend via `Ctx::metal()`.
 
 ## Crates

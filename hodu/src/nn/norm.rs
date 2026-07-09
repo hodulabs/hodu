@@ -4,11 +4,13 @@ use hodu_core::{Error, Tensor};
 
 use super::Param;
 
+mod batch;
 mod group;
 mod instance;
 mod layer;
 mod rms;
 
+pub use batch::{BatchNorm, BatchNorm1d, BatchNorm2d};
 pub use group::GroupNorm;
 pub use instance::InstanceNorm;
 pub use layer::LayerNorm;

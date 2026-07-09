@@ -17,7 +17,7 @@ use std::io;
 use std::path::Path;
 
 use crate::Tensor;
-use crate::kurumi::{InputBinding, InputRole, NodeId, serialize_graph};
+use crate::kurumi::{InputBinding, InputRole, NodeId, serialize_reachable};
 use crate::nn::Module;
 use crate::optim::OptState;
 
@@ -63,9 +63,9 @@ pub fn load_checkpoint(path: impl AsRef<Path>, model: &dyn Module, opt: &mut dyn
 
 /// Write a runnable inference artifact: the weight rows (as [`save`]) PLUS the graph and
 /// its output/input bindings, so the model runs from the file alone. `runtime_inputs`
-/// names the non-weight Input tensors (x, tokens, ...) fed at inference. Build `outputs`
-/// on a forward-only, eval-mode `Ctx` (no grad, no dropout state) so the serialized graph
-/// is inference-clean -- the whole record arena is written (dead-node pruning aside).
+/// names the non-weight Input tensors (x, tokens, ...) fed at inference. Only the nodes the
+/// outputs depend on are written, so a training Ctx's backward nodes are pruned; record
+/// `outputs` in eval mode so any dropout collapses to identity.
 pub fn save_runnable(
     path: impl AsRef<Path>,
     model: &dyn Module,
@@ -91,7 +91,7 @@ pub fn save_runnable(
         inputs.push(InputBinding { node: t.node(), role: InputRole::Runtime, name: name.to_string() });
     }
     let out_ids: Vec<NodeId> = outputs.iter().map(|t| t.node()).collect();
-    let blob = first.ctx().with_graph(|g| serialize_graph(g, &out_ids, &inputs));
+    let blob = first.ctx().with_graph(|g| serialize_reachable(g, &out_ids, &inputs));
     write_container(path, &meta(), &model_entries(model), &blob)
 }
 
@@ -102,8 +102,9 @@ mod tests {
     use crate::kurumi::{Backend, CpuBackend, Feeds, Storage, TensorVal, deserialize_graph};
     use crate::nn::Linear;
 
-    // A forward graph saved as a runnable artifact must, when loaded and fed its weights
-    // (from the rows) plus the runtime input, recompute the exact forward value.
+    // A runnable artifact saved from a TRAINING Ctx must prune the backward nodes and, when
+    // loaded and fed its weights (from the rows) plus the runtime input, recompute the exact
+    // forward value.
     #[test]
     fn save_runnable_round_trips() {
         let ctx = Ctx::cpu();
@@ -114,12 +115,29 @@ mod tests {
         let y = lin.forward(&x).unwrap();
         let want = ctx.eval_f32(y.node());
 
+        // a training run: grad() grows the arena with backward nodes the artifact must drop.
+        let params = lin.parameters();
+        let pts: Vec<&Tensor> = params.iter().map(|p| p.tensor()).collect();
+        let _ = y.grad(&pts).unwrap();
+
         let path = std::env::temp_dir().join("hodu_save_runnable_test.hodu");
         save_runnable(&path, &lin, &[&y], &[("x", &x)]).unwrap();
 
         // load: weights from the tensor rows, the graph from the trailing blob.
         let (entries, blob) = read_container(&path).unwrap();
         assert!(!blob.is_empty(), "the runnable artifact must carry a graph section");
+
+        // save_runnable prunes to the forward cone, so the blob is smaller than a whole-arena
+        // serialize that would still carry the backward nodes.
+        let mut whole: Vec<InputBinding> = lin
+            .named_parameters("")
+            .into_iter()
+            .map(|(name, p)| InputBinding { node: p.tensor().node(), role: InputRole::Weight, name })
+            .collect();
+        whole.push(InputBinding { node: x.node(), role: InputRole::Runtime, name: "x".into() });
+        let whole_blob = ctx.with_graph(|g| crate::kurumi::serialize_graph(g, &[y.node()], &whole));
+        assert!(blob.len() < whole_blob.len(), "backward nodes not pruned ({} vs {})", blob.len(), whole_blob.len());
+
         let r = deserialize_graph(&blob).unwrap();
 
         // bind every Input: weights by FQN from the rows, the runtime "x" from our data.

@@ -13,5 +13,5 @@ pub use crate::optim::{
     Adam, AdamW, CosineAnnealingLR, LambdaLR, OptState, Sgd, StepLR, accumulate_grads, clip_grad_norm, grad_values,
     scale_grads,
 };
-pub use crate::serialize::{load, load_checkpoint, save, save_checkpoint};
+pub use crate::serialize::{load, load_checkpoint, save, save_checkpoint, save_runnable};
 pub use crate::{Ctx, Error, Tensor};

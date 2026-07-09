@@ -130,6 +130,12 @@ impl Ctx {
             .collect()
     }
 
+    /// Borrow the record graph, e.g. to serialize it. The closure scopes the borrow so
+    /// the graph never escapes the `RefCell`.
+    pub fn with_graph<R>(&self, f: impl FnOnce(&Graph) -> R) -> R {
+        f(&self.0.graph.borrow())
+    }
+
     /// Reverse-mode grad of `output` w.r.t. each node in `wrt` (adds backward
     /// nodes to the graph); returns the grad node ids.
     pub(crate) fn grad(&self, output: NodeId, wrt: &[NodeId]) -> Result<Vec<NodeId>, Error> {

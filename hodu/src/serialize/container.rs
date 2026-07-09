@@ -106,7 +106,16 @@ pub(super) fn model_entries(model: &dyn Module) -> Vec<Entry> {
     out
 }
 
-pub(super) fn write_container(path: impl AsRef<Path>, meta: &[(&str, &str)], tensors: &[Entry]) -> io::Result<()> {
+// `graph` is the optional runnable-graph blob (a `save_runnable` artifact). It is written
+// as a trailing `[u64 len][bytes]` section AFTER the tensor table; an empty blob writes
+// nothing, so a weights-only file is byte-identical to a plain `save` and any reader that
+// stops after the table (see `read_container`) ignores the section.
+pub(super) fn write_container(
+    path: impl AsRef<Path>,
+    meta: &[(&str, &str)],
+    tensors: &[Entry],
+    graph: &[u8],
+) -> io::Result<()> {
     let mut w = BufWriter::new(File::create(path)?);
     w.write_all(MAGIC)?;
     w.write_all(&VERSION.to_le_bytes())?;
@@ -126,10 +135,16 @@ pub(super) fn write_container(path: impl AsRef<Path>, meta: &[(&str, &str)], ten
         w.write_all(&(t.data.len() as u64).to_le_bytes())?;
         w.write_all(&t.data)?;
     }
+    if !graph.is_empty() {
+        w.write_all(&(graph.len() as u64).to_le_bytes())?;
+        w.write_all(graph)?;
+    }
     w.flush()
 }
 
-pub(super) fn read_container(path: impl AsRef<Path>) -> io::Result<Vec<Entry>> {
+// Returns the tensor rows plus the trailing runnable-graph blob (empty for a weights-only
+// file). The blob, if present, is a `[u64 len][bytes]` section after the last row.
+pub(super) fn read_container(path: impl AsRef<Path>) -> io::Result<(Vec<Entry>, Vec<u8>)> {
     let mut r = BufReader::new(File::open(path)?);
     let mut magic = [0u8; 4];
     r.read_exact(&mut magic)?;
@@ -166,7 +181,22 @@ pub(super) fn read_container(path: impl AsRef<Path>) -> io::Result<Vec<Entry>> {
         r.read_exact(&mut data)?;
         out.push(Entry { name, kind, dtype, shape, data });
     }
-    Ok(out)
+    // trailing runnable-graph section, if any (see write_container). A weights-only file
+    // ends at the last row, so there is no trailer and the blob is empty.
+    let mut trailer = Vec::new();
+    r.read_to_end(&mut trailer)?;
+    let graph = if trailer.is_empty() {
+        Vec::new()
+    } else if trailer.len() >= 8 {
+        let len = u64::from_le_bytes(trailer[..8].try_into().unwrap()) as usize;
+        if trailer.len() < 8 + len {
+            return Err(inval("truncated graph section in .hodu file"));
+        }
+        trailer[8..8 + len].to_vec()
+    } else {
+        return Err(inval("truncated graph section in .hodu file"));
+    };
+    Ok((out, graph))
 }
 
 // Find a model tensor by (kind, name) among the file rows, validate its shape, and

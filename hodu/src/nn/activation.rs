@@ -10,6 +10,8 @@ pub struct Tanh;
 pub struct Gelu;
 /// Logistic sigmoid.
 pub struct Sigmoid;
+/// Sigmoid-weighted linear unit: `x * sigmoid(x)`.
+pub struct Silu;
 
 impl Module for Relu {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
@@ -29,5 +31,10 @@ impl Module for Gelu {
 impl Module for Sigmoid {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
         Ok(x.sigmoid())
+    }
+}
+impl Module for Silu {
+    fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
+        Ok(x.silu())
     }
 }

@@ -1,6 +1,7 @@
 //! `.hodu` v1 container: named params + buffers round-trip, self-describing load
 //! (mismatch errors clearly), BatchNorm running stats survive save/load (the eval
 //! correctness bug), and optimizer state resumes a training run.
+use hodu::kurumi::CpuBackend;
 use hodu::prelude::*;
 
 fn mlp(ctx: &Ctx, seed: u64) -> Sequential {
@@ -123,6 +124,41 @@ fn batchnorm_running_stats_survive_round_trip() {
     load(&path, &fresh).unwrap();
     let after = y2.realize();
     assert_eq!(after, want, "BatchNorm running stats must persist across save/load (eval-mode correctness)");
+    std::fs::remove_file(&path).ok();
+}
+
+// The runnable-path analogue of the round-trip above: through save_runnable ->
+// load_runnable -> run, the BatchNorm running-stat buffers are bound as WEIGHTS in the
+// graph (a K_BUFFER row per stat) and rebound on load, so eval-mode inference from the
+// file alone reproduces the pre-save forward. The train/eval flag is a graph Input the
+// weights don't cover, so it rides as a runtime input fed 0.0 (eval).
+#[test]
+fn runnable_batchnorm_eval_round_trips() {
+    let path = std::env::temp_dir().join("hodu_runnable_bn.hodu");
+    let n = 16usize;
+    let train_batch: Vec<f32> = (0..n * 4).map(|i| ((i * 7 % 13) as f32) - 3.0).collect();
+    let eval_batch: Vec<f32> = (0..n * 4).map(|i| ((i % 5) as f32) * 0.5).collect();
+
+    let ctx = Ctx::cpu();
+    let net = BnNet::new(&ctx, 1);
+    let x = ctx.input(vec![n, 4]);
+    ctx.feed(x.node(), train_batch, vec![n, 4]);
+    let y = net.forward(&x).unwrap();
+    for _ in 0..10 {
+        let _ = y.realize();
+        net.bn.update_running();
+    }
+    // eval mode: the graph is deterministic (running stats, no dropout), so record want.
+    ctx.set_training(false);
+    ctx.feed(x.node(), eval_batch.clone(), vec![n, 4]);
+    let want = y.realize();
+
+    let flag = ctx.train_flag();
+    save_runnable(&path, &net, &[&y], &[("x", &x), ("train", &flag)]).unwrap();
+
+    let model = load_runnable(&path).unwrap();
+    let got = model.run(&CpuBackend, &[("x", &eval_batch), ("train", &[0.0])]).unwrap();
+    assert_eq!(got[0].f32(), want.as_slice(), "running-stat buffers must rebind from the runnable rows");
     std::fs::remove_file(&path).ok();
 }
 
@@ -327,6 +363,51 @@ fn quant_byte_buffer_survives_custom_container() {
     load(&path, &fresh).unwrap();
     let after = fresh.forward(&x2).unwrap().realize();
     assert_eq!(after, want, "quant byte-buffer must persist through a custom children() container");
+    std::fs::remove_file(&path).ok();
+}
+
+// The runnable-path analogue: a QuantLinear's packed U8 weight is written as a DT_U8
+// byte-buffer row and must round-trip through row_to_val's U8 branch (the f32 branch is
+// what everything else exercises), so run-from-file reproduces the pre-save forward.
+#[test]
+fn runnable_quant_byte_buffer_round_trips() {
+    let path = std::env::temp_dir().join("hodu_runnable_qnet.hodu");
+    let ctx = Ctx::cpu();
+    let net = qnet(&ctx, 1);
+    let x = ctx.input(vec![4, 4]);
+    let xs: Vec<f32> = (0..4 * 4).map(|i| (i as f32) * 0.1 - 0.7).collect();
+    ctx.feed(x.node(), xs.clone(), vec![4, 4]);
+    let y = net.forward(&x).unwrap();
+    let want = y.realize();
+
+    save_runnable(&path, &net, &[&y], &[("x", &x)]).unwrap();
+    let model = load_runnable(&path).unwrap();
+    let got = model.run(&CpuBackend, &[("x", &xs)]).unwrap();
+    assert_eq!(got[0].f32(), want.as_slice(), "packed U8 quant weight must rebind through the U8 row branch");
+    std::fs::remove_file(&path).ok();
+}
+
+// A multi-output runnable graph: save_runnable takes &[&Tensor] and run returns one
+// TensorVal per output. Two heads off the same forward must both come back correct.
+#[test]
+fn runnable_multi_output_round_trips() {
+    let path = std::env::temp_dir().join("hodu_runnable_multi.hodu");
+    let ctx = Ctx::cpu();
+    let net = mlp(&ctx, 5);
+    let x = ctx.input(vec![2, 3]);
+    let xs = vec![0.5, -1.0, 2.0, 1.0, 0.0, -0.5];
+    ctx.feed(x.node(), xs.clone(), vec![2, 3]);
+    let y = net.forward(&x).unwrap();
+    let y2 = y.relu(); // a distinct second output node
+    let want = y.realize();
+    let want2 = y2.realize();
+
+    save_runnable(&path, &net, &[&y, &y2], &[("x", &x)]).unwrap();
+    let model = load_runnable(&path).unwrap();
+    let got = model.run(&CpuBackend, &[("x", &xs)]).unwrap();
+    assert_eq!(got.len(), 2, "one value per output");
+    assert_eq!(got[0].f32(), want.as_slice());
+    assert_eq!(got[1].f32(), want2.as_slice());
     std::fs::remove_file(&path).ok();
 }
 

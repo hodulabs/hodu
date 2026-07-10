@@ -14,7 +14,8 @@ pub struct Conv2d {
 
 impl Conv2d {
     /// He-uniform init in `[-1/sqrt(fan_in), 1/sqrt(fan_in)]`, `fan_in = C*KH*KW`,
-    /// from a deterministic `seed`. Dilation is 1.
+    /// from a deterministic `seed`. Dilation defaults to `(1, 1)`; set it with
+    /// [`Conv2d::with_dilation`].
     pub fn new(
         ctx: &Ctx,
         in_ch: usize,
@@ -58,6 +59,13 @@ impl Conv2d {
             dilation: (1, 1),
         }
     }
+
+    /// Set the dilation (spacing between kernel elements), default `(1, 1)`. Dilation
+    /// enlarges the effective kernel to `(dh*(KH-1)+1, dw*(KW-1)+1)`, shrinking the map.
+    pub fn with_dilation(mut self, dh: usize, dw: usize) -> Self {
+        self.dilation = (dh, dw);
+        self
+    }
 }
 
 impl Module for Conv2d {
@@ -85,5 +93,18 @@ mod tests {
         // new defaults to He-uniform: same seed + HeUniform reproduces `new` exactly.
         let he = Conv2d::with_init(&ctx, 3, 4, (3, 3), (1, 1), (1, 1), 7, Init::HeUniform);
         assert_eq!(default.w.value(), he.w.value());
+    }
+
+    #[test]
+    fn with_dilation_enlarges_effective_kernel() {
+        // 3x3 kernel over a valid 7x7 map (no padding, stride 1).
+        let ctx = Ctx::cpu();
+        let x = ctx.constant(vec![0.0; 3 * 7 * 7], vec![1, 3, 7, 7]);
+        // dilation 1: effective kernel 3 -> out 5x5.
+        let plain = Conv2d::new(&ctx, 3, 4, (3, 3), (1, 1), (0, 0), 0);
+        assert_eq!(plain.forward(&x).unwrap().shape(), &[1, 4, 5, 5]);
+        // dilation 2: effective kernel 2*(3-1)+1 = 5 -> out 3x3.
+        let dil = Conv2d::new(&ctx, 3, 4, (3, 3), (1, 1), (0, 0), 0).with_dilation(2, 2);
+        assert_eq!(dil.forward(&x).unwrap().shape(), &[1, 4, 3, 3]);
     }
 }

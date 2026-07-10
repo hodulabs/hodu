@@ -6,12 +6,12 @@ pub use crate::loss::{
 pub use crate::nn::{
     AvgPool2d, BatchNorm, BatchNorm1d, BatchNorm2d, Buffer, Conv2d, Dropout, Embedding, Flatten, Gelu, GroupNorm, Gru,
     Init, InstanceNorm, LayerNorm, Linear, Lstm, MaxPool2d, Module, MultiHeadAttention, Param, QBuffer, QuantLinear,
-    Relu, RmsNorm, Sequential, Sigmoid, Tanh, TransformerBlock, TransformerEncoder, kaiming_normal, uniform,
+    Relu, RmsNorm, Sequential, Sigmoid, Silu, Tanh, TransformerBlock, TransformerEncoder, kaiming_normal, uniform,
     xavier_uniform,
 };
 pub use crate::optim::{
     Adam, AdamW, CosineAnnealingLR, LambdaLR, OptState, Sgd, StepLR, accumulate_grads, clip_grad_norm, grad_values,
     scale_grads,
 };
-pub use crate::serialize::{load, load_checkpoint, save, save_checkpoint, save_runnable};
+pub use crate::serialize::{RunnableModel, load, load_checkpoint, load_runnable, save, save_checkpoint, save_runnable};
 pub use crate::{Ctx, Error, Tensor};

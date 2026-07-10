@@ -19,7 +19,7 @@ mod rnn;
 mod sequential;
 mod transformer;
 
-pub use activation::{Gelu, Relu, Sigmoid, Tanh};
+pub use activation::{Gelu, Relu, Sigmoid, Silu, Tanh};
 pub use attention::MultiHeadAttention;
 pub use conv::Conv2d;
 pub use dropout::Dropout;

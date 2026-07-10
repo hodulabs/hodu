@@ -11,12 +11,10 @@
 //! Running stats are `Buffer`s (non-learnable, host-valued), reported via
 //! `Module::buffers` so `save`/`load` persist them -- eval-mode inference is correct
 //! after a round-trip.
-use std::cell::Cell;
-
-use hodu_core::{Ctx, Error, NodeId, Tensor};
-
-use super::channel_affine;
+use crate::nn::norm::channel_affine;
 use crate::nn::{Buffer, Module, Param};
+use hodu_core::{Ctx, Error, NodeId, Tensor};
+use std::cell::Cell;
 
 /// Batch norm for any `[N, C, ..]` (reduces every non-channel axis). `BatchNorm1d`
 /// (`[N,C]`/`[N,C,L]`) and `BatchNorm2d` (`[N,C,H,W]`) are the same math.

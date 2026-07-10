@@ -1,7 +1,6 @@
 //! An unrolled LSTM cell (input/forget/cell/output gates).
-use hodu_core::{Ctx, Error, Tensor};
-
 use crate::nn::{Module, Param, uniform};
+use hodu_core::{Ctx, Error, Tensor};
 
 /// An unrolled LSTM. The input-hidden `w_ih [in, 4H]`, hidden-hidden `w_hh [H, 4H]`
 /// and `bias [4H]` pack the input/forget/cell/output gates side by side (one matmul

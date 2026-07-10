@@ -1,8 +1,7 @@
 //! Reductions on `Tensor`: sum/mean over one axis or all axes, max-reduce, and the
 //! (non-differentiable) argmax/argmin index ops.
-use kurumi::{Error, Graph, NodeId};
-
 use crate::Tensor;
+use kurumi::{Error, Graph, NodeId};
 
 impl Tensor {
     pub fn sum_axis(&self, axis: usize) -> Result<Tensor, Error> {

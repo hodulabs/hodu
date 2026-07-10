@@ -2,9 +2,8 @@
 //! (scalar). Static shapes are known at record time, so a mismatch is a bug in
 //! the caller's code -- these panic with the record-time error; use the `try_*`
 //! methods for the `Result` form.
-use std::ops::{Add, Div, Mul, Neg, Sub};
-
 use crate::Tensor;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 macro_rules! bin_op {
     ($Tr:ident, $m:ident, $try:ident) => {

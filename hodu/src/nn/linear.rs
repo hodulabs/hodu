@@ -1,7 +1,6 @@
 //! Affine layer `y = x @ w + b`, with `w: (in, out)` and `b: (out,)`.
+use crate::nn::{Module, Param, kaiming_normal, uniform, xavier_uniform};
 use hodu_core::{Ctx, Error, Tensor};
-
-use super::{Module, Param, kaiming_normal, uniform, xavier_uniform};
 
 /// Weight initializer for [`Linear::with_init`]. `new` uses `HeUniform`.
 pub enum Init {

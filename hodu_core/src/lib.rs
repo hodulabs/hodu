@@ -3,12 +3,12 @@
 //! and dtype promotion are inserted here, before the engine's strict ops -- that
 //! split is the frontend's job. No eager, no dynamic shapes: this is the static
 //! surface hodu (the user crate) and, later, the AOT path sit on.
-pub use kurumi;
 
 mod ctx;
 mod tensor;
 
 pub use ctx::Ctx;
+pub use kurumi;
 pub use kurumi::{DType, Error, NodeId};
 pub use tensor::Tensor;
 

@@ -1,7 +1,6 @@
 //! Parameter-free spatial layers: 2-D max and average pooling.
+use crate::nn::Module;
 use hodu_core::{Error, Tensor};
-
-use super::Module;
 
 /// 2-D max pooling with window `k` and stride `s` (both `(h, w)`).
 pub struct MaxPool2d {
@@ -41,9 +40,8 @@ impl Module for AvgPool2d {
 
 #[cfg(test)]
 mod tests {
-    use hodu_core::Ctx;
-
     use super::*;
+    use hodu_core::Ctx;
 
     #[test]
     fn avg_pool2d_halves_and_averages() {

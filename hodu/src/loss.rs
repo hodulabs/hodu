@@ -55,9 +55,8 @@ pub fn nll_loss(log_probs: &Tensor, target: &Tensor) -> Result<Tensor, Error> {
 
 #[cfg(test)]
 mod tests {
-    use hodu_core::Ctx;
-
     use super::*;
+    use hodu_core::Ctx;
 
     #[test]
     fn l1_and_huber_match_hand_values() {

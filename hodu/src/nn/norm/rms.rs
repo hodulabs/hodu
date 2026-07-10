@@ -1,7 +1,6 @@
 //! RMS normalization over the last axis with a learned scale (the Llama-family norm).
-use hodu_core::{Ctx, Error, Tensor};
-
 use crate::nn::{Module, Param};
+use hodu_core::{Ctx, Error, Tensor};
 
 /// RMS normalization over the last axis with a learned scale (`gamma`, no bias):
 /// `gamma * x / sqrt(mean(x^2) + eps)`. The norm Llama-family models use.

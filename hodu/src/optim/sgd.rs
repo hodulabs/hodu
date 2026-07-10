@@ -1,11 +1,8 @@
 //! SGD with optional momentum + coupled weight decay.
-use std::cell::{Cell, RefCell};
-
-use hodu_core::Error;
-
 use crate::nn::Param;
-
-use super::{OptState, opt_err, take_slot};
+use crate::optim::{OptState, opt_err, take_slot};
+use hodu_core::Error;
+use std::cell::{Cell, RefCell};
 
 /// SGD, optionally with momentum + weight decay: `g' = g + wd*p`, `v = mu*v + g'`,
 /// `p -= lr*v` (plain SGD when `mu = wd = 0`). `lr` is a `Cell` so an LR scheduler

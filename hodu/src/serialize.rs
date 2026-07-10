@@ -13,11 +13,6 @@
 //! Next step (hodu-plan/02-artifact-format.md): promote this flat table to
 //! section-offset regions with 4K page alignment for mmap. The name/kind/dtype/shape
 //! schema here is exactly the table that layout builds on.
-use std::io;
-use std::path::Path;
-
-use crate::nn::Module;
-use crate::optim::OptState;
 
 mod container;
 mod model;
@@ -25,8 +20,12 @@ mod runnable;
 
 pub use runnable::save_runnable;
 
+use crate::nn::Module;
+use crate::optim::OptState;
 use container::{DT_F32, Entry, K_OPTIM, inval, meta, read_container, write_container};
 use model::{apply_to_model, bytes_to_f32, f32_to_bytes, model_entries};
+use std::io;
+use std::path::Path;
 
 /// Write a model's params + buffers (named, self-describing) to `path`.
 pub fn save(path: impl AsRef<Path>, model: &dyn Module) -> io::Result<()> {

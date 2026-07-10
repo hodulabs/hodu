@@ -42,6 +42,11 @@ hodu builds on kurumi's builder surface -- most additions are thin wraps, not ne
 
 - No `mod.rs`. Modules are `foo.rs` + `foo/*.rs` (a `foo.rs` may hold code and declare its
   submodules).
+- Declarations lead the file in order: `pub mod`, `mod`, `pub use`, `use`. Lines within a
+  group are contiguous (no blank line); groups are separated by one blank line.
+- Paths are absolute -- `use crate::...`. The one exception is a file's own submodules: after
+  `mod a;`, refer to it as `a::...`, not `crate::...::a::...`. No `use super::` at file scope;
+  it is allowed only inside an inline `mod { }` block (e.g. a `#[cfg(test)] mod tests`).
 - Comments explain the logic and the reason, kernel-style: terse, ASCII, no ornament.
 - Keep `just check` clean -- `clippy --all-targets -D warnings` is part of the gate.
 

@@ -1,9 +1,8 @@
 //! Activations on `Tensor`, thin wraps of kurumi's fused ops (softmax/gelu/... are
 //! single fused primitives in the engine, so they lower to one kernel and autodiff
 //! through the engine's VJP).
-use kurumi::Error;
-
 use crate::Tensor;
+use kurumi::Error;
 
 impl Tensor {
     pub fn relu(&self) -> Tensor {

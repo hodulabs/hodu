@@ -1,8 +1,5 @@
 //! The shared per-channel affine used by the normalization layers; each norm
 //! (layer / RMS / group / instance) lives in its own submodule.
-use hodu_core::{Error, Tensor};
-
-use super::Param;
 
 mod batch;
 mod group;
@@ -15,6 +12,9 @@ pub use group::GroupNorm;
 pub use instance::InstanceNorm;
 pub use layer::LayerNorm;
 pub use rms::RmsNorm;
+
+use crate::nn::Param;
+use hodu_core::{Error, Tensor};
 
 // per-channel affine over `[N, C, ..]`: gamma/beta live as [C], reshaped to
 // [1, C, 1, ..] at forward so they broadcast on the channel axis (dim 1).

@@ -1,8 +1,7 @@
 //! A linear stack of modules: `forward` chains them; the tensor walks derive from
 //! `children` (each layer named by its index).
+use crate::nn::Module;
 use hodu_core::{Error, Tensor};
-
-use super::Module;
 
 pub struct Sequential {
     layers: Vec<Box<dyn Module>>,

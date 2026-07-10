@@ -5,9 +5,8 @@
 //! per-dropout `seed`. Train: mask ~= `Bernoulli(1-p)`, survivors scaled `1/(1-p)`;
 //! eval (`flag=0`): threshold 0 keeps everything, scale 1 -> identity. `ctx.tick_rng()`
 //! refeeds the seed each step for a fresh mask; `ctx.set_training(false)` flips to eval.
+use crate::nn::Module;
 use hodu_core::{Ctx, DType, Error, Tensor};
-
-use super::Module;
 
 pub struct Dropout {
     seed: Tensor,

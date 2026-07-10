@@ -1,9 +1,8 @@
 //! Mini-batch loader + a batch that feeds itself into the graph's Inputs. Fixed
 //! batch width (the tail partial batch is dropped -- the static graph's shape is
 //! baked once).
+use crate::data::{Data, Dataset, Target, draw, gather_flat};
 use hodu_core::{Ctx, NodeId};
-
-use super::{Data, Dataset, Target, draw, gather_flat};
 
 /// One mini-batch. `x` is flat over `x_shape` = `[batch, sample_shape...]`; feed it
 /// with [`Batch::feed_x`]. Targets are class labels ([`Batch::y_class`]) or f32

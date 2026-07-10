@@ -2,13 +2,13 @@
 //! node -> current host value). Cheap to clone (`Rc`); every `Tensor` holds one.
 //! single-threaded record (`Rc`/`RefCell`); swap to `Arc` + lock to share across
 //! threads.
+
+mod rng;
+
+use crate::Tensor;
 use kurumi::{Backend, CpuBackend, DType, Error, Feeds, Graph, NodeId, Storage, TensorVal};
 use std::cell::RefCell;
 use std::rc::Rc;
-
-use crate::Tensor;
-
-mod rng;
 
 #[derive(Clone)]
 pub struct Ctx(Rc<CtxInner>);

@@ -6,10 +6,6 @@
 //!
 //! This file is the spine: the handle, the broadcasting machine (`bin` + promote +
 //! coerce), and grad. The op surface is split by domain across `tensor/*.rs`.
-use kurumi::{DType, Error, Graph, NodeId};
-use std::rc::Rc;
-
-use crate::Ctx;
 
 mod activation;
 mod attention;
@@ -21,6 +17,10 @@ mod norm;
 mod operators;
 mod reduce;
 mod shape;
+
+use crate::Ctx;
+use kurumi::{DType, Error, Graph, NodeId};
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct Tensor(Rc<TensorInner>);

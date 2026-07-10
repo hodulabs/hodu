@@ -1,11 +1,9 @@
 //! The model<->rows bridge: a Module's named params/buffers/byte-buffers become tensor-table
 //! rows (model_entries), and rows load back into a live model by name (apply_to_model). The
 //! on-disk byte format itself lives in container.rs.
-use std::io;
-
 use crate::nn::Module;
-
-use super::container::{DT_F32, DT_U8, Entry, K_BUFFER, K_OPTIM, K_PARAM, K_QBUFFER, inval};
+use crate::serialize::container::{DT_F32, DT_U8, Entry, K_BUFFER, K_OPTIM, K_PARAM, K_QBUFFER, inval};
+use std::io;
 
 pub(super) fn f32_to_bytes(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|x| x.to_le_bytes()).collect()

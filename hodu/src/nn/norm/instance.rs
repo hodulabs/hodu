@@ -1,9 +1,7 @@
 //! Instance normalization (group norm with one group per channel).
-use hodu_core::{Ctx, Error, Tensor};
-
+use crate::nn::norm::channel_affine;
 use crate::nn::{Module, Param};
-
-use super::channel_affine;
+use hodu_core::{Ctx, Error, Tensor};
 
 /// Instance normalization: group norm with one group per channel.
 pub struct InstanceNorm {

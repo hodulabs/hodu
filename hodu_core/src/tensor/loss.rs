@@ -1,7 +1,6 @@
 //! Loss ops on `Tensor` (raw engine ops; `hodu::loss` wraps them as free fns).
-use kurumi::Error;
-
 use crate::Tensor;
+use kurumi::Error;
 
 impl Tensor {
     /// Softmax cross-entropy over `axis`: `-sum(targets * log_softmax(self))`,

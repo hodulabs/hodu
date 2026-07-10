@@ -1,8 +1,7 @@
 //! 2-D convolution layer: `[N,C,H,W] -> [N,O,Ho,Wo]`, weight `[O,C,KH,KW]` plus a
 //! per-output-channel bias broadcast over the spatial map.
+use crate::nn::{Init, Module, Param, kaiming_normal, uniform, xavier_uniform};
 use hodu_core::{Ctx, Error, Tensor};
-
-use super::{Init, Module, Param, kaiming_normal, uniform, xavier_uniform};
 
 pub struct Conv2d {
     w: Param,

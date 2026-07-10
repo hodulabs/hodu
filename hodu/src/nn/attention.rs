@@ -1,7 +1,6 @@
 //! Multi-head self-attention over kurumi's fused `sdpa` (+ optional RoPE).
+use crate::nn::{Linear, Module};
 use hodu_core::{Ctx, Error, Tensor};
-
-use super::{Linear, Module};
 
 /// Multi-head self-attention. Projects `x` `[B, S, d]` with four `Linear(d, d)`
 /// maps (q/k/v/out), splits q/k/v into `H` heads of width `dh = d/H` and moves them

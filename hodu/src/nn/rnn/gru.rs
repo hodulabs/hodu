@@ -1,7 +1,6 @@
 //! An unrolled GRU cell (reset/update gates).
-use hodu_core::{Ctx, Error, Tensor};
-
 use crate::nn::{Module, Param, uniform};
+use hodu_core::{Ctx, Error, Tensor};
 
 /// An unrolled GRU (reset/update gates). Two bias vectors are kept because the reset
 /// gate multiplies the hidden projection BEFORE the input projection is added, so the

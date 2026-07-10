@@ -1,7 +1,6 @@
 //! Token embedding: a `[vocab, d]` lookup table gathered by integer token ids.
+use crate::nn::{Init, Module, Param, kaiming_normal, uniform, xavier_uniform};
 use hodu_core::{Ctx, Error, Tensor};
-
-use super::{Init, Module, Param, kaiming_normal, uniform, xavier_uniform};
 
 /// Maps integer token ids to `d`-dim rows of a learned `[vocab, d]` table.
 /// `forward(idx)` gathers rows, so an id tensor `idx` `[B, S]` -> `[B, S, d]`. `idx`

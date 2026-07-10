@@ -1,7 +1,6 @@
 //! Layer normalization with a learned affine (`gamma`, `beta`) over the last axis.
-use hodu_core::{Ctx, Error, Tensor};
-
 use crate::nn::{Module, Param};
+use hodu_core::{Ctx, Error, Tensor};
 
 /// `gamma * (x - mean) / sqrt(var + eps) + beta`, normalized over the last axis.
 pub struct LayerNorm {

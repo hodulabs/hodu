@@ -9,11 +9,10 @@
 //! scales/mins are stored as f32 `Buffer`s and cast to F16 in-graph (the widened f16 is
 //! recovered exactly by the f32->f16 cast); this keeps the frontend `half`-free while the
 //! op still sees the F16 it requires.
+use crate::nn::linear::Linear;
+use crate::nn::{Buffer, Module, Param, QBuffer};
 use hodu_core::kurumi::quantize;
 use hodu_core::{Ctx, Error, Tensor};
-
-use super::linear::Linear;
-use super::{Buffer, Module, Param, QBuffer};
 
 /// A quantized affine layer. Build with [`QuantLinear::from_linear`]; `forward` matches
 /// an f32 `Linear` within quantization error.

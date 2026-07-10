@@ -3,9 +3,8 @@
 //! view, so autodiff comes for free). The per-timestep RNN unroll lives on these:
 //! `slice` a timestep, `squeeze` the length-1 time axis, `split` a fused gate
 //! projection into its four/three gates.
-use kurumi::Error;
-
 use crate::Tensor;
+use kurumi::Error;
 
 impl Tensor {
     pub fn reshape(&self, shape: Vec<usize>) -> Result<Tensor, Error> {

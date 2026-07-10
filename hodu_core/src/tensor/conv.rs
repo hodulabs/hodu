@@ -1,9 +1,8 @@
 //! 2-D convolution and pooling, thin wraps of kurumi's `conv2d`/`pool` ops (the
 //! engine decomposes them from strided-slice + dot_general, so autodiff -- conv
 //! backward and the weight gradient -- comes for free). Layout is NCHW throughout.
-use kurumi::Error;
-
 use crate::Tensor;
+use kurumi::Error;
 
 impl Tensor {
     /// 2-D convolution. `self` `[N, C, H, W]`, `weight` `[O, C, KH, KW]` ->

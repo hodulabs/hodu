@@ -2,10 +2,9 @@
 //! packed U8 quant weight in QuantLinear. Like Buffer but typed: fed as its true
 //! Storage and persisted by save/load as raw bytes + a dtype tag, so a quantized weight
 //! round-trips at its real size (not f32-expanded). Cheap-clone (`Rc`).
+use hodu_core::{Ctx, DType, Tensor};
 use std::cell::RefCell;
 use std::rc::Rc;
-
-use hodu_core::{Ctx, DType, Tensor};
 
 #[derive(Clone)]
 pub struct QBuffer(Rc<QBufferInner>);

@@ -1,14 +1,12 @@
 //! The runnable-graph artifact writer: save_runnable adds the serialized forward graph and its
 //! output/input bindings to the weight rows, so a model runs from the .hodu file alone.
-use std::io;
-use std::path::Path;
-
 use crate::Tensor;
 use crate::kurumi::{InputBinding, InputRole, NodeId, serialize_reachable};
 use crate::nn::Module;
-
-use super::container::{inval, meta, write_container};
-use super::model::model_entries;
+use crate::serialize::container::{inval, meta, write_container};
+use crate::serialize::model::model_entries;
+use std::io;
+use std::path::Path;
 
 /// Write a runnable inference artifact: the weight rows (as [`save`](super::save)) PLUS the
 /// graph and its output/input bindings, so the model runs from the file alone. `runtime_inputs`

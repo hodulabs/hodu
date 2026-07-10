@@ -1,9 +1,7 @@
 //! Group normalization over `[N, C, ..]` (split C into groups, then a per-channel affine).
-use hodu_core::{Ctx, Error, Tensor};
-
+use crate::nn::norm::channel_affine;
 use crate::nn::{Module, Param};
-
-use super::channel_affine;
+use hodu_core::{Ctx, Error, Tensor};
 
 /// Group normalization over `[N, C, ..]`: split C into `groups`, normalize each
 /// group, then a learned per-channel affine (`gamma`, `beta`).

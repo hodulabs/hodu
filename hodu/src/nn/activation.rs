@@ -1,7 +1,6 @@
 //! Parameter-free activation layers (unit structs wrapping a `Tensor` method).
+use crate::nn::Module;
 use hodu_core::{Error, Tensor};
-
-use super::Module;
 
 /// ReLU: `max(0, x)`.
 pub struct Relu;

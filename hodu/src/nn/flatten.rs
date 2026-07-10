@@ -1,7 +1,6 @@
 //! `Flatten`: the parameter-free layer that collapses trailing dims into one.
+use crate::nn::Module;
 use hodu_core::{Error, Tensor};
-
-use super::Module;
 
 /// Flatten dims `[start_dim ..]` into one (e.g. `[N,C,H,W] -> [N, C*H*W]` for
 /// `start_dim = 1`), to feed conv features into a Linear head.

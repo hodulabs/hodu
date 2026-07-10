@@ -1,9 +1,8 @@
 //! Elementwise math on `Tensor`: the broadcasting binary ops (the `try_*` Result
 //! forms) and unary maps. Binary ops promote dtype + broadcast shape via `bin`
 //! before the engine's strict builders; `&a + &b` operators wrap these.
-use kurumi::{DType, Error};
-
 use crate::Tensor;
+use kurumi::{DType, Error};
 
 impl Tensor {
     pub fn try_add(&self, rhs: &Tensor) -> Result<Tensor, Error> {

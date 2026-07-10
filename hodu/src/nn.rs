@@ -2,7 +2,6 @@
 //! plus its host value (the optimizer mutates it and re-feeds; the graph node
 //! stays fixed). `Module`s compose into a forward graph built once, then trained
 //! by feeding batches.
-use hodu_core::{Error, Tensor};
 
 mod activation;
 mod attention;
@@ -35,6 +34,8 @@ pub use quant::QuantLinear;
 pub use rnn::{Gru, Lstm};
 pub use sequential::Sequential;
 pub use transformer::{TransformerBlock, TransformerEncoder};
+
+use hodu_core::{Error, Tensor};
 
 /// A composable layer: a forward pass plus the tensors it owns. A LEAF (Linear,
 /// BatchNorm, ...) overrides `parameters`/`buffers`/`byte_buffers` to report its own

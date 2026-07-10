@@ -1,9 +1,8 @@
 //! Sequence / attention primitives: embedding gather, rotary position embedding
 //! (RoPE), and scaled dot-product attention -- thin wraps of kurumi's decomposed
 //! ops, each of which autodiffs for free through the engine's VJP.
-use kurumi::Error;
-
 use crate::Tensor;
+use kurumi::Error;
 
 impl Tensor {
     /// Gather slices of `self` along `axis` at integer `indices` (jnp.take): the

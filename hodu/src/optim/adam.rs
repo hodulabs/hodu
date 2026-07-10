@@ -1,9 +1,7 @@
 //! Adam and AdamW (decoupled weight decay), over shared `AdamState` machinery.
-use hodu_core::Error;
-
 use crate::nn::Param;
-
-use super::{OptState, take_slot};
+use crate::optim::{OptState, take_slot};
+use hodu_core::Error;
 
 /// Adam: per-parameter first/second moment estimates with bias correction. For
 /// weight decay use [`AdamW`] (decoupled -- the modern default); plain Adam here

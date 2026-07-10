@@ -3,7 +3,6 @@
 //! values. Params are `Rc`-shared, so an update is visible to the next forward.
 //! State (Adam's moments) is indexed by param position -- pass the params to the
 //! optimizer in the same order used to build the grads.
-use hodu_core::Error;
 
 mod adam;
 mod grad;
@@ -14,6 +13,8 @@ pub use adam::{Adam, AdamW};
 pub use grad::{accumulate_grads, clip_grad_norm, grad_values, scale_grads};
 pub use sched::{CosineAnnealingLR, LambdaLR, StepLR};
 pub use sgd::Sgd;
+
+use hodu_core::Error;
 
 /// A named snapshot of an optimizer's mutable state (moments + step), keyed by name
 /// so it round-trips through the `.hodu` container's `optim` tensors independent of

@@ -1,16 +1,16 @@
 //! The learnable host-valued Input leaf. Wraps a fixed graph node plus its host value;
 //! updates re-feed the node so the next eval sees them. Cheap-clone (`Rc`). The
 //! non-learnable Buffer (f32) / QBuffer (raw-byte) variants live in the submodules.
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use hodu_core::{Ctx, Tensor};
 
 mod buffer;
 mod qbuffer;
 
 pub use buffer::Buffer;
 pub use qbuffer::QBuffer;
+
+use hodu_core::{Ctx, Tensor};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// A trainable parameter. Cheap-clone (`Rc`): the layer and the optimizer share
 /// one, so an optimizer step is visible to the next forward.

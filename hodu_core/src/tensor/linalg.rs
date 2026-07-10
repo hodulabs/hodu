@@ -1,8 +1,7 @@
 //! Linear-algebra ops on `Tensor`. Just matmul for now; inv/solve/det/svd wraps
 //! land here as the engine surfaces them.
-use kurumi::{DType, Error};
-
 use crate::Tensor;
+use kurumi::{DType, Error};
 
 impl Tensor {
     /// 2-D / rank-N@2-D matmul: contract this tensor's last axis with `rhs`'s

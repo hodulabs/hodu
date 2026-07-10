@@ -2,10 +2,9 @@
 //! Param but excluded from parameters()/gradients -- a BUFFER the optimizer never
 //! touches, updated host-side, and persisted by save/load so eval-mode state survives
 //! a round-trip. Cheap-clone (`Rc`).
+use hodu_core::{Ctx, Tensor};
 use std::cell::RefCell;
 use std::rc::Rc;
-
-use hodu_core::{Ctx, Tensor};
 
 #[derive(Clone)]
 pub struct Buffer(Rc<BufferInner>);

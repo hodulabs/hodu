@@ -1,8 +1,7 @@
 //! Normalization ops on `Tensor` (the raw engine op; the learned scale/shift lives
 //! in `hodu::nn`).
-use kurumi::Error;
-
 use crate::Tensor;
+use kurumi::Error;
 
 impl Tensor {
     /// Layer normalization over `axis` (mean 0, var 1; no affine -- see

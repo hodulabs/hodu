@@ -1,7 +1,6 @@
 //! Pre-norm Transformer encoder block, and a stack of them.
+use crate::nn::{LayerNorm, Linear, Module, MultiHeadAttention};
 use hodu_core::{Ctx, Error, Tensor};
-
-use super::{LayerNorm, Linear, Module, MultiHeadAttention};
 
 /// A pre-norm Transformer block: `x = x + MHA(LN1(x))`, then `x = x + FFN(LN2(x))`,
 /// where `FFN = Linear(d, 4d) -> Gelu -> Linear(4d, d)`. Pre-norm (LayerNorm before

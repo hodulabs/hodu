@@ -1,7 +1,7 @@
 use super::*;
 use crate::Ctx;
 use crate::kurumi::{CpuBackend, serialize_graph};
-use crate::nn::Linear;
+use crate::nn::{Embedding, Linear};
 
 // A runnable artifact saved from a TRAINING Ctx must prune the backward nodes, then load and
 // run from the file alone -- weights from the rows, the runtime input from the caller --
@@ -40,7 +40,31 @@ fn save_runnable_round_trips() {
     // load + run through the public API: weights from the rows, "x" from the caller.
     let model = load_runnable(&path).unwrap();
     assert_eq!(model.input_names(), vec!["x"]);
-    let got = model.run(&CpuBackend, &[("x", &xs)]).unwrap();
+    let got = model.run(&CpuBackend, &[("x", Storage::F32(xs))]).unwrap();
+    assert_eq!(got[0].f32(), want.as_slice());
+
+    std::fs::remove_file(&path).ok();
+}
+
+// The runtime input can be I64 tokens, not just f32: an Embedding forward is fed token ids
+// through run's typed Storage, proving token/LM models deploy from the file. Before, run
+// hardcoded Storage::F32 -> a dtype mismatch on the I64 index Input made this impossible.
+#[test]
+fn save_runnable_i64_tokens_round_trip() {
+    let ctx = Ctx::cpu();
+    let emb = Embedding::new(&ctx, 6, 4, 0);
+    let idx = ctx.input_i64(vec![2, 3]);
+    let ids: Vec<i64> = vec![0, 1, 2, 3, 4, 5];
+    ctx.feed_i64(idx.node(), ids.clone(), vec![2, 3]);
+    let y = emb.forward(&idx).unwrap();
+    let want = ctx.eval_f32(y.node());
+
+    let path = std::env::temp_dir().join("hodu_save_runnable_i64.hodu");
+    save_runnable(&path, &emb, &[&y], &[("tokens", &idx)]).unwrap();
+
+    let model = load_runnable(&path).unwrap();
+    assert_eq!(model.input_names(), vec!["tokens"]);
+    let got = model.run(&CpuBackend, &[("tokens", Storage::I64(ids))]).unwrap();
     assert_eq!(got[0].f32(), want.as_slice());
 
     std::fs::remove_file(&path).ok();

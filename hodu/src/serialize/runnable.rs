@@ -3,7 +3,8 @@
 //! [`RunnableModel`] that runs the forward from the `.hodu` file alone.
 use crate::Tensor;
 use crate::kurumi::{
-    Backend, Feeds, Graph, InputBinding, InputRole, NodeId, Storage, TensorVal, deserialize_graph, serialize_reachable,
+    Backend, DType, Feeds, Graph, InputBinding, InputRole, NodeId, Storage, TensorVal, deserialize_graph,
+    serialize_reachable,
 };
 use crate::nn::Module;
 use crate::serialize::container::{DT_U8, Entry, bytes_to_f32, inval, meta, read_container, write_container};
@@ -14,8 +15,10 @@ use std::path::Path;
 /// Write a runnable inference artifact: the weight rows (as [`save`](super::save)) PLUS the
 /// graph and its output/input bindings, so the model runs from the file alone. `runtime_inputs`
 /// names the non-weight Input tensors (x, tokens, ...) fed at inference. Only the nodes the
-/// outputs depend on are written, so a training Ctx's backward nodes are pruned; record
-/// `outputs` in eval mode so any dropout collapses to identity. Read back with [`load_runnable`].
+/// outputs depend on are written, so a training Ctx's backward nodes are pruned. The internal
+/// RNG Inputs (train/eval flag, dropout seeds) are bound too, so the artifact is self-contained:
+/// [`load_runnable`] auto-feeds their eval-mode defaults and the caller feeds only the real
+/// runtime inputs. Read back with [`load_runnable`].
 pub fn save_runnable(
     path: impl AsRef<Path>,
     model: &dyn Module,
@@ -40,6 +43,14 @@ pub fn save_runnable(
     for &(name, t) in runtime_inputs {
         inputs.push(InputBinding { node: t.node(), role: InputRole::Runtime, name: name.to_string() });
     }
+    // The shared train/eval flag and each dropout seed are graph Inputs no weight/runtime
+    // binding covers. Bind them under a reserved-name marker (RNG_MARK) as Weights so load
+    // auto-feeds their eval-mode defaults (flag 0.0, seed 0) -- the artifact is self-contained,
+    // the caller never passes "train"/"seed". serialize_reachable drops any not reachable from
+    // the outputs, so a net without Dropout/BatchNorm binds none.
+    for (i, (node, _dt)) in first.ctx().rng_inputs().into_iter().enumerate() {
+        inputs.push(InputBinding { node, role: InputRole::Weight, name: format!("{RNG_MARK}{i}") });
+    }
     let out_ids: Vec<NodeId> = outputs.iter().map(|t| t.node()).collect();
     let blob = first.ctx().with_graph(|g| serialize_reachable(g, &out_ids, &inputs));
     write_container(path, &meta(), &model_entries(model), &blob)
@@ -51,7 +62,8 @@ pub fn save_runnable(
 pub struct RunnableModel {
     graph: Graph,
     outputs: Vec<NodeId>,
-    // weight Inputs bound by name from the container rows (node -> value), fed on every run.
+    // Fixed Inputs fed on every run (node -> value): weights resolved from the container rows,
+    // plus internal RNG Inputs auto-set to their eval-mode default (train flag 0.0, seeds 0).
     weights: Vec<(NodeId, TensorVal)>,
     // runtime Inputs the caller feeds by name (name -> node); shape comes from the graph node.
     runtime: Vec<(String, NodeId)>,
@@ -63,22 +75,24 @@ impl RunnableModel {
         self.runtime.iter().map(|(n, _)| n.as_str()).collect()
     }
 
-    /// Evaluate every output on `backend`, feeding the stored weights plus the caller's runtime
-    /// inputs (each an f32 slice sized to its graph Input node). Errors if a required runtime
+    /// Evaluate every output on `backend`, feeding the stored weights (and internal eval-mode
+    /// RNG defaults) plus the caller's runtime inputs. Each runtime input is a typed [`Storage`]
+    /// (f32 data, i64 tokens, ...) sized to its graph Input node. Errors if a required runtime
     /// input is missing.
-    pub fn run(&self, backend: &dyn Backend, runtime: &[(&str, &[f32])]) -> io::Result<Vec<TensorVal>> {
+    pub fn run(&self, backend: &dyn Backend, runtime: &[(&str, Storage)]) -> io::Result<Vec<TensorVal>> {
         let mut feeds = Feeds::new();
         for (node, val) in &self.weights {
             feeds.insert(*node, val.clone());
         }
         for (name, node) in &self.runtime {
-            let data = runtime
+            let storage = runtime
                 .iter()
                 .find(|(n, _)| *n == name.as_str())
                 .ok_or_else(|| inval(format!("run: missing runtime input '{name}'")))?
-                .1;
-            let shape = self.graph.shape(*node).to_vec();
-            feeds.insert(*node, TensorVal { shape, storage: Storage::F32(data.to_vec()) });
+                .1
+                .clone();
+            let shape = self.graph.shape(*node);
+            feeds.insert(*node, TensorVal { shape, storage });
         }
         Ok(backend.eval_many_with(&self.graph, &self.outputs, &feeds))
     }
@@ -98,6 +112,11 @@ pub fn load_runnable(path: impl AsRef<Path>) -> io::Result<RunnableModel> {
     let mut runtime = Vec::new();
     for b in &r.inputs {
         match b.role {
+            // An internal RNG Input (train flag / dropout seed): no stored row -- its
+            // eval-mode value is a known constant, synthesized from the node's dtype+shape.
+            InputRole::Weight if b.name.starts_with(RNG_MARK) => {
+                weights.push((b.node, eval_default(&r.graph, b.node)));
+            }
             InputRole::Weight => {
                 let e = entries.iter().find(|e| e.name == b.name).ok_or_else(|| {
                     inval(format!("load_runnable: weight '{}' is missing from the .hodu rows", b.name))
@@ -108,6 +127,21 @@ pub fn load_runnable(path: impl AsRef<Path>) -> io::Result<RunnableModel> {
         }
     }
     Ok(RunnableModel { graph: r.graph, outputs: r.outputs, weights, runtime })
+}
+
+// Reserved input-binding name prefix for the internal RNG Inputs. Starts with NUL so it can
+// never collide with a module FQN (dot-joined identifiers), letting load tell an auto-fed
+// eval default apart from a real weight row.
+const RNG_MARK: char = '\0';
+
+// The eval-mode constant fed to an internal RNG Input: all-zeros of its dtype+shape. flag 0.0
+// forces every dropout mask all-ones (threshold train_flag*p = 0), which makes the seed value
+// irrelevant, so 0 is fine. See nn/dropout.rs and ctx/train.rs.
+fn eval_default(g: &Graph, node: NodeId) -> TensorVal {
+    let shape = g.shape(node);
+    let n: usize = shape.iter().product();
+    let storage = if g.dtype(node) == DType::F32 { Storage::F32(vec![0.0; n]) } else { Storage::I64(vec![0; n]) };
+    TensorVal { shape, storage }
 }
 
 // A container tensor row -> a feedable value: f32 params/buffers, or a raw-u8 quant byte-buffer.

@@ -1,7 +1,7 @@
 //! `.hodu` v1 container: named params + buffers round-trip, self-describing load
 //! (mismatch errors clearly), BatchNorm running stats survive save/load (the eval
 //! correctness bug), and optimizer state resumes a training run.
-use hodu::kurumi::CpuBackend;
+use hodu::kurumi::{CpuBackend, Storage};
 use hodu::prelude::*;
 
 fn mlp(ctx: &Ctx, seed: u64) -> Sequential {
@@ -130,8 +130,8 @@ fn batchnorm_running_stats_survive_round_trip() {
 // The runnable-path analogue of the round-trip above: through save_runnable ->
 // load_runnable -> run, the BatchNorm running-stat buffers are bound as WEIGHTS in the
 // graph (a K_BUFFER row per stat) and rebound on load, so eval-mode inference from the
-// file alone reproduces the pre-save forward. The train/eval flag is a graph Input the
-// weights don't cover, so it rides as a runtime input fed 0.0 (eval).
+// file alone reproduces the pre-save forward. The train/eval flag is an internal RNG Input
+// the artifact binds itself and load auto-feeds 0.0 (eval), so run gets only the real "x".
 #[test]
 fn runnable_batchnorm_eval_round_trips() {
     let path = std::env::temp_dir().join("hodu_runnable_bn.hodu");
@@ -153,12 +153,36 @@ fn runnable_batchnorm_eval_round_trips() {
     ctx.feed(x.node(), eval_batch.clone(), vec![n, 4]);
     let want = y.realize();
 
-    let flag = ctx.train_flag();
-    save_runnable(&path, &net, &[&y], &[("x", &x), ("train", &flag)]).unwrap();
+    save_runnable(&path, &net, &[&y], &[("x", &x)]).unwrap();
 
     let model = load_runnable(&path).unwrap();
-    let got = model.run(&CpuBackend, &[("x", &eval_batch), ("train", &[0.0])]).unwrap();
+    // Only the real runtime input "x": the train flag is auto-fed 0.0 by the artifact.
+    assert_eq!(model.input_names(), vec!["x"], "the flag must NOT surface as a caller input");
+    let got = model.run(&CpuBackend, &[("x", Storage::F32(eval_batch))]).unwrap();
     assert_eq!(got[0].f32(), want.as_slice(), "running-stat buffers must rebind from the runnable rows");
+    std::fs::remove_file(&path).ok();
+}
+
+// A Dropout-containing model runs from the file with only its real input: in eval the mask is
+// provably all-ones (flag 0 -> threshold 0), so the artifact self-feeds the flag and each
+// dropout seed their eval defaults and the caller never passes a "train"/"seed".
+#[test]
+fn runnable_dropout_eval_self_contained() {
+    let path = std::env::temp_dir().join("hodu_runnable_dropout.hodu");
+    let ctx = Ctx::cpu();
+    let net = Sequential::new(vec![Box::new(Linear::new(&ctx, 4, 4, 0)), Box::new(Dropout::new(&ctx, 0.5).unwrap())]);
+    let x = ctx.input(vec![2, 4]);
+    let xs: Vec<f32> = (0..8).map(|i| i as f32 * 0.1 - 0.4).collect();
+    ctx.feed(x.node(), xs.clone(), vec![2, 4]);
+    ctx.set_training(false); // eval: dropout is identity regardless of seed
+    let y = net.forward(&x).unwrap();
+    let want = y.realize();
+
+    save_runnable(&path, &net, &[&y], &[("x", &x)]).unwrap();
+    let model = load_runnable(&path).unwrap();
+    assert_eq!(model.input_names(), vec!["x"], "flag/seed must NOT surface as caller inputs");
+    let got = model.run(&CpuBackend, &[("x", Storage::F32(xs))]).unwrap();
+    assert_eq!(got[0].f32(), want.as_slice(), "eval-mode dropout (mask all-ones) must run without a fed seed");
     std::fs::remove_file(&path).ok();
 }
 
@@ -382,7 +406,7 @@ fn runnable_quant_byte_buffer_round_trips() {
 
     save_runnable(&path, &net, &[&y], &[("x", &x)]).unwrap();
     let model = load_runnable(&path).unwrap();
-    let got = model.run(&CpuBackend, &[("x", &xs)]).unwrap();
+    let got = model.run(&CpuBackend, &[("x", Storage::F32(xs))]).unwrap();
     assert_eq!(got[0].f32(), want.as_slice(), "packed U8 quant weight must rebind through the U8 row branch");
     std::fs::remove_file(&path).ok();
 }
@@ -404,7 +428,7 @@ fn runnable_multi_output_round_trips() {
 
     save_runnable(&path, &net, &[&y, &y2], &[("x", &x)]).unwrap();
     let model = load_runnable(&path).unwrap();
-    let got = model.run(&CpuBackend, &[("x", &xs)]).unwrap();
+    let got = model.run(&CpuBackend, &[("x", Storage::F32(xs))]).unwrap();
     assert_eq!(got.len(), 2, "one value per output");
     assert_eq!(got[0].f32(), want.as_slice());
     assert_eq!(got[1].f32(), want2.as_slice());

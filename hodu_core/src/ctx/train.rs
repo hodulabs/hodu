@@ -3,6 +3,7 @@
 //! dropout's `seed` Input is refreshed per step (`tick_rng`) so the mask is fresh --
 //! all without rebuilding the graph. State lives in `CtxInner.rng` (see ctx.rs).
 use crate::{Ctx, Tensor};
+use kurumi::{DType, NodeId};
 
 impl Ctx {
     /// The shared train/eval flag Input (`1.0` train, `0.0` eval), created lazily.
@@ -53,5 +54,15 @@ impl Ctx {
             let seed = c.wrapping_mul(1_000_003).wrapping_add(i as u64) as i64;
             self.feed_i64(*s, vec![seed], vec![1]);
         }
+    }
+
+    /// The internal RNG Input nodes -- the shared train/eval flag then each dropout seed
+    /// -- with each node's graph dtype. `save_runnable` binds these so the artifact
+    /// self-feeds their eval-mode defaults instead of leaking them as caller inputs.
+    /// Empty until a Dropout/BatchNorm has created them.
+    pub fn rng_inputs(&self) -> Vec<(NodeId, DType)> {
+        let r = self.0.rng.borrow();
+        let g = self.0.graph.borrow();
+        r.flag.into_iter().chain(r.seeds.iter().copied()).map(|n| (n, g.dtype(n))).collect()
     }
 }

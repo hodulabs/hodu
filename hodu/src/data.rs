@@ -8,115 +8,13 @@
 //!
 //! Static graph => fixed batch shape => drop_last. A ragged final batch
 //! would need a second graph; not worth it for training.
+mod dataset;
 mod loader;
 mod types;
 
+pub use dataset::Dataset;
 pub use loader::{Batch, DataLoader};
 pub use types::{Data, Target};
-
-use hodu_core::Error;
-
-fn data_err(msg: String) -> Error {
-    Error::Shape { op: "Dataset", msg }
-}
-
-/// A flat sample/label dataset. Input is row-major over `[len, sample_shape...]`.
-pub struct Dataset {
-    x: Data,
-    sample_shape: Vec<usize>,
-    y: Target,
-    len: usize,
-}
-
-impl Dataset {
-    /// f32 features + integer class labels.
-    pub fn new(x: Vec<f32>, sample_shape: Vec<usize>, y: Vec<usize>) -> Result<Dataset, Error> {
-        Dataset::build(Data::F32(x), sample_shape, Target::Class(y))
-    }
-
-    /// i64 token ids + integer class labels (for `Embedding`-fronted models).
-    pub fn tokens(x: Vec<i64>, sample_shape: Vec<usize>, y: Vec<usize>) -> Result<Dataset, Error> {
-        Dataset::build(Data::I64(x), sample_shape, Target::Class(y))
-    }
-
-    /// f32 features + f32 regression targets (`target_shape` is per-sample).
-    pub fn regression(
-        x: Vec<f32>,
-        sample_shape: Vec<usize>,
-        y: Vec<f32>,
-        target_shape: Vec<usize>,
-    ) -> Result<Dataset, Error> {
-        Dataset::build(Data::F32(x), sample_shape, Target::Reg { data: y, shape: target_shape })
-    }
-
-    fn build(x: Data, sample_shape: Vec<usize>, y: Target) -> Result<Dataset, Error> {
-        let per: usize = sample_shape.iter().product();
-        let xlen = match &x {
-            Data::F32(v) => v.len(),
-            Data::I64(v) => v.len(),
-        };
-        let len = xlen / per;
-        if xlen != len * per {
-            return Err(data_err(format!("x len {xlen} not a multiple of {per}")));
-        }
-        match &y {
-            Target::Class(labels) => {
-                if labels.len() != len {
-                    return Err(data_err(format!("labels {} != samples {len}", labels.len())));
-                }
-            }
-            Target::Reg { data, shape } => {
-                let tp: usize = shape.iter().product();
-                if data.len() != len * tp {
-                    return Err(data_err(format!("reg targets {} != samples {len} * {tp}", data.len())));
-                }
-            }
-        }
-        Ok(Dataset { x, sample_shape, y, len })
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    fn sample_size(&self) -> usize {
-        self.sample_shape.iter().product()
-    }
-
-    /// Deterministically split into `(train, val)` by `train_frac` of the samples
-    /// (shuffled by `seed`). Used to avoid hand-building two loaders.
-    pub fn split(self, train_frac: f32, seed: u64) -> (Dataset, Dataset) {
-        let mut idx: Vec<usize> = (0..self.len).collect();
-        let mut rng = seed ^ 0x2545_F491_4F6C_DD1D;
-        for i in (1..idx.len()).rev() {
-            idx.swap(i, (draw(&mut rng) >> 33) as usize % (i + 1));
-        }
-        let n_train = (self.len as f32 * train_frac).round() as usize;
-        let (a, b) = idx.split_at(n_train);
-        (self.gather(a), self.gather(b))
-    }
-
-    // Build a sub-dataset from sample indices (copies the selected rows).
-    fn gather(&self, idx: &[usize]) -> Dataset {
-        let per = self.sample_size();
-        let x = match &self.x {
-            Data::F32(v) => Data::F32(gather_flat(v, per, idx)),
-            Data::I64(v) => Data::I64(gather_flat(v, per, idx)),
-        };
-        let y = match &self.y {
-            Target::Class(l) => Target::Class(idx.iter().map(|&s| l[s]).collect()),
-            Target::Reg { data, shape } => {
-                let tp: usize = shape.iter().product();
-                Target::Reg { data: gather_flat(data, tp, idx), shape: shape.clone() }
-            }
-        };
-        // rows come from an already-valid dataset -> the shape invariant holds.
-        Dataset::build(x, self.sample_shape.clone(), y).expect("gather: sub-dataset invariant")
-    }
-}
 
 // Copy rows `idx` (each `per` wide) out of a flat row-major buffer.
 fn gather_flat<T: Copy>(src: &[T], per: usize, idx: &[usize]) -> Vec<T> {

@@ -6,12 +6,12 @@
 
 mod adam;
 mod grad;
-mod sched;
+mod scheduler;
 mod sgd;
 
 pub use adam::{Adam, AdamW};
 pub use grad::{accumulate_grads, clip_grad_norm, grad_values, scale_grads};
-pub use sched::{CosineAnnealingLR, LambdaLR, StepLR};
+pub use scheduler::{CosineAnnealingLR, LambdaLR, StepLR};
 pub use sgd::Sgd;
 
 use hodu_core::Error;

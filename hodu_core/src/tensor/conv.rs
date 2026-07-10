@@ -1,6 +1,6 @@
-//! 2-D convolution and pooling, thin wraps of kurumi's `conv2d`/`pool` ops (the
-//! engine decomposes them from strided-slice + dot_general, so autodiff -- conv
-//! backward and the weight gradient -- comes for free). Layout is NCHW throughout.
+//! 2-D convolution, a thin wrap of kurumi's `conv2d` op (the engine decomposes it
+//! from strided-slice + dot_general, so autodiff -- conv backward and the weight
+//! gradient -- comes for free). Layout is NCHW throughout.
 use crate::Tensor;
 use kurumi::Error;
 
@@ -17,18 +17,5 @@ impl Tensor {
     ) -> Result<Tensor, Error> {
         let (x, w) = (self.node(), weight.node());
         self.ctx().build(|g| g.conv2d(x, w, stride, padding, dilation))
-    }
-
-    /// 2-D max pool: window `k`, stride `s` (both `(h, w)`). `[N,C,H,W]` ->
-    /// `[N,C,Ho,Wo]`.
-    pub fn max_pool2d(&self, k: (usize, usize), s: (usize, usize)) -> Result<Tensor, Error> {
-        let x = self.node();
-        self.ctx().build(|g| g.max_pool2d(x, k, s))
-    }
-
-    /// 2-D average pool: window `k`, stride `s`.
-    pub fn avg_pool2d(&self, k: (usize, usize), s: (usize, usize)) -> Result<Tensor, Error> {
-        let x = self.node();
-        self.ctx().build(|g| g.avg_pool2d(x, k, s))
     }
 }

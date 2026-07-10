@@ -1,6 +1,14 @@
 //! Deterministic weight initializers (host-side splitmix64; init only, so no need
 //! for the engine's counter RNG). Layers pick one at construction.
 
+/// Weight initializer selector shared by the `with_init` constructors of
+/// `Linear`/`Conv2d`/`Embedding`. Their `new` uses `HeUniform`.
+pub enum Init {
+    HeUniform,
+    XavierUniform,
+    KaimingNormal,
+}
+
 // splitmix64 uniform draw in [0,1).
 fn draw01(s: &mut u64) -> f32 {
     *s = s.wrapping_add(0x9E37_79B9_7F4A_7C15);

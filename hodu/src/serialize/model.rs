@@ -2,16 +2,10 @@
 //! rows (model_entries), and rows load back into a live model by name (apply_to_model). The
 //! on-disk byte format itself lives in container.rs.
 use crate::nn::Module;
-use crate::serialize::container::{DT_F32, DT_U8, Entry, K_BUFFER, K_OPTIM, K_PARAM, K_QBUFFER, inval};
+use crate::serialize::container::{
+    DT_F32, DT_U8, Entry, K_BUFFER, K_OPTIM, K_PARAM, K_QBUFFER, bytes_to_f32, f32_to_bytes, inval,
+};
 use std::io;
-
-pub(super) fn f32_to_bytes(v: &[f32]) -> Vec<u8> {
-    v.iter().flat_map(|x| x.to_le_bytes()).collect()
-}
-
-pub(super) fn bytes_to_f32(b: &[u8]) -> Vec<f32> {
-    b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
-}
 
 fn kind_name(k: u8) -> &'static str {
     match k {

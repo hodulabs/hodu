@@ -58,6 +58,16 @@ fn read_str(r: &mut impl Read) -> io::Result<String> {
     String::from_utf8(b).map_err(|e| inval(format!("bad utf8 in name: {e}")))
 }
 
+// f32 <-> LE bytes: the DT_F32 payload codec, shared by model.rs (params/buffers) and
+// runnable.rs (constant weights).
+pub(super) fn f32_to_bytes(v: &[f32]) -> Vec<u8> {
+    v.iter().flat_map(|x| x.to_le_bytes()).collect()
+}
+
+pub(super) fn bytes_to_f32(b: &[u8]) -> Vec<f32> {
+    b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
+}
+
 // `graph` is the optional runnable-graph blob (a `save_runnable` artifact). It is written
 // as a trailing `[u64 len][bytes]` section AFTER the tensor table; an empty blob writes
 // nothing, so a weights-only file is byte-identical to a plain `save` and any reader that

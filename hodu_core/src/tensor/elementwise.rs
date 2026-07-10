@@ -30,29 +30,6 @@ impl Tensor {
         })
     }
 
-    pub fn sqrt(&self) -> Tensor {
-        let n = self.node();
-        self.ctx().build_inf(|g| g.sqrt(n))
-    }
-    pub fn exp(&self) -> Tensor {
-        let n = self.node();
-        self.ctx().build_inf(|g| g.exp(n))
-    }
-    pub fn square(&self) -> Tensor {
-        let n = self.node();
-        self.ctx().build_inf(|g| g.square(n))
-    }
-    /// Natural log (elementwise).
-    pub fn ln(&self) -> Tensor {
-        let n = self.node();
-        self.ctx().build_inf(|g| g.ln(n))
-    }
-    /// Elementwise `self ** p`.
-    pub fn powf(&self, p: f32) -> Result<Tensor, Error> {
-        let e = self.scalar_like(p);
-        self.bin(&e, "pow", |g, a, b| g.pow(a, b))
-    }
-
     /// Cast to `dtype`. `realize()` reads f32, so `t.cast(DType::F32)` makes an
     /// integer/bool result (e.g. from `argmax`) readable on the host.
     pub fn cast(&self, dtype: DType) -> Tensor {

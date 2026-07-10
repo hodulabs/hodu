@@ -18,12 +18,12 @@ mod container;
 mod model;
 mod runnable;
 
-pub use runnable::save_runnable;
+pub use runnable::{RunnableModel, load_runnable, save_runnable};
 
 use crate::nn::Module;
 use crate::optim::OptState;
-use container::{DT_F32, Entry, K_OPTIM, inval, meta, read_container, write_container};
-use model::{apply_to_model, bytes_to_f32, f32_to_bytes, model_entries};
+use container::{DT_F32, Entry, K_OPTIM, bytes_to_f32, f32_to_bytes, inval, meta, read_container, write_container};
+use model::{apply_to_model, model_entries};
 use std::io;
 use std::path::Path;
 

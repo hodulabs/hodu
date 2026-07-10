@@ -8,7 +8,7 @@ The user layer of [hodu](https://github.com/hodulabs/hodu): `nn` modules, optimi
 - **`optim`** -- `Sgd` (with momentum/weight decay), `Adam`, `AdamW`; `StepLR`/`CosineAnnealingLR`/`LambdaLR`; `clip_grad_norm` and `accumulate_grads`. Optimizers carry `OptState` for checkpointing.
 - **`loss`** -- `mse_loss`, `cross_entropy`, `bce_loss`/`bce_with_logits`, `nll_loss`, `huber_loss`, `hinge_loss`, `kl_div`.
 - **`data`** -- `Dataset`/`DataLoader` over f32 features or i64 tokens, class or regression targets, with a train/val `split`.
-- **`serialize`** -- the `.hodu` v1 container: `save`/`load` (named params + buffers + quant byte-buffers), `save_checkpoint`/`load_checkpoint` (adds optimizer state), and `save_runnable` (adds the forward graph, so the model runs from the file alone).
+- **`serialize`** -- the `.hodu` v1 container: `save`/`load` (named params + buffers + quant byte-buffers), `save_checkpoint`/`load_checkpoint` (adds optimizer state), and `save_runnable`/`load_runnable` (adds the forward graph and runs it, so the model runs from the file alone).
 - **`QuantLinear`** -- weight-only int8/int4 quantization for a smaller deploy artifact.
 
 ## Model contract

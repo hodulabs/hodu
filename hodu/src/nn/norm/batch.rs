@@ -89,6 +89,12 @@ fn bc_shape(r: usize, c: usize) -> Vec<usize> {
 
 impl Module for BatchNorm {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
+        if x.rank() < 2 {
+            return Err(Error::Shape {
+                op: "BatchNorm",
+                msg: format!("expected rank >= 2 input (channel dim present), got rank {}", x.rank()),
+            });
+        }
         let bc = bc_shape(x.rank(), self.c);
         // batch stats (biased), always computed in-graph
         let bmean = per_channel(x)?; // [C]

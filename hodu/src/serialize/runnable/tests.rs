@@ -94,6 +94,38 @@ fn gen_cross_frontend_fixture() {
     println!("want = {want:?}");
 }
 
+// Dev tool (run with `--ignored --nocapture`): (re)generate the checked-in cross-frontend
+// DROPOUT runnable fixture hodu-py loads. A Linear -> Dropout net makes save_runnable bind
+// the internal RNG Inputs (the train/eval flag + dropout seed) as reserved NUL-prefixed
+// Weight bindings, so the artifact is self-contained -- load auto-feeds their eval-mode
+// defaults. Saved in EVAL mode so the printed `want` equals the artifact's forced-eval
+// forward (dropout = identity). Prints x + want to hardcode in the Python consumer.
+#[test]
+#[ignore = "regenerates the committed hodu-py cross-frontend dropout runnable fixture; run manually"]
+fn gen_cross_frontend_dropout_fixture() {
+    use crate::nn::{Dropout, Sequential};
+    let ctx = Ctx::cpu();
+    let model = Sequential::new(vec![
+        Box::new(Linear::new(&ctx, 4, 3, 0)) as Box<dyn crate::nn::Module>,
+        Box::new(Dropout::new(&ctx, 0.5).unwrap()),
+    ]);
+    let x = ctx.input(vec![2, 4]);
+    let xs: Vec<f32> = (0..8).map(|i| i as f32 * 0.1 - 0.4).collect();
+    ctx.feed(x.node(), xs.clone(), vec![2, 4]);
+    let y = model.forward(&x).unwrap();
+    ctx.set_training(false); // eval: dropout is identity (flag 0.0), matching the artifact default
+    let want = ctx.eval_f32(y.node());
+
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../hodu-py/tests/fixtures/dropout_runnable.hodu");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    save_runnable(&path, &model, &[&y], &[("x", &x)]).unwrap();
+
+    println!("wrote {}", path.display());
+    println!("x = {xs:?}");
+    println!("want = {want:?}");
+}
+
 // Dev tool (run with --ignored --nocapture): (re)generate the cross-frontend K_BUFFER
 // fixture. A plain save() of a BatchNorm carries its running stats as K_BUFFER rows; set
 // them to distinctive values so hodu-py's row-level test pins the K_BUFFER byte codec by

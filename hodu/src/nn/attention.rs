@@ -58,6 +58,12 @@ impl MultiHeadAttention {
 
 impl Module for MultiHeadAttention {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
+        if x.rank() != 3 {
+            return Err(Error::Shape {
+                op: "MultiHeadAttention",
+                msg: format!("expected [B,S,d] input, got rank {}", x.rank()),
+            });
+        }
         let (b, s, d) = (x.shape()[0], x.shape()[1], x.shape()[2]);
         let mut q = self.split_heads(&self.q.forward(x)?)?;
         let mut k = self.split_heads(&self.k.forward(x)?)?;

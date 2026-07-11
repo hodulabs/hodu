@@ -80,6 +80,15 @@ fn mlp_with_batchnorm_trains() {
     let _ = logits.realize(); // eval-mode forward runs without panic
 }
 
+// The base BatchNorm (prelude-exported, no rank wrapper) Errs on a rank-1 input rather
+// than panicking on the channel-axis index its reductions assume.
+#[test]
+fn base_batchnorm_rank1_errors() {
+    let ctx = Ctx::cpu();
+    let bn = BatchNorm::new(&ctx, 4, 1e-5, 0.1);
+    assert!(bn.forward(&ctx.zeros(vec![4])).is_err());
+}
+
 // 3 gaussian blobs in 4-D (channels 0,1 informative, 2,3 noise), class = which blob.
 fn blobs() -> (Vec<f32>, Vec<usize>) {
     let centers = [(2.5f32, 2.5f32), (-2.5, 2.5), (0.0, -2.5)];

@@ -54,9 +54,9 @@ fn cnn_classifies_textures() {
     let (mut correct, mut total) = (0usize, 0usize);
     for b in eval.batches() {
         b.feed_x(&ctx, x.node());
-        let lg = logits.realize();
+        let preds = argmax(&logits, 1);
         for (i, &lab) in b.y_class().iter().enumerate() {
-            if argmax(&lg[i * CLASSES..(i + 1) * CLASSES]) == lab {
+            if preds[i] == lab {
                 correct += 1;
             }
             total += 1;
@@ -94,8 +94,4 @@ fn noise(s: &mut u64) -> f32 {
     z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     z ^= z >> 31;
     (z >> 40) as f32 / (1u64 << 24) as f32 * 0.3 - 0.15
-}
-
-fn argmax(row: &[f32]) -> usize {
-    row.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).map(|(i, _)| i).unwrap_or(0)
 }

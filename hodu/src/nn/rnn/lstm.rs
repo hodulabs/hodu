@@ -43,6 +43,9 @@ impl Lstm {
 impl Module for Lstm {
     /// `x` `[B,T,in]` -> last hidden `[B,H]` (default) or sequence `[B,T,H]`.
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
+        if x.rank() != 3 {
+            return Err(Error::Shape { op: "Lstm", msg: format!("expected [B,T,in] input, got rank {}", x.rank()) });
+        }
         let ctx = x.ctx();
         let (b, t, inf) = (x.shape()[0], x.shape()[1], x.shape()[2]);
         let hn = self.hidden;

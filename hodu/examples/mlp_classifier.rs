@@ -34,7 +34,7 @@ fn main() {
         }
     }
     println!("final loss {:.4}", loss.item());
-    println!("train accuracy {:.1}%", 100.0 * accuracy(&logits.realize(), &labels));
+    println!("train accuracy {:.1}%", 100.0 * accuracy(&logits, &labels, 3));
 }
 
 // three well-separated 2-D blobs (uniform jitter), 100 points each.
@@ -66,15 +66,4 @@ fn one_hot(labels: &[usize], classes: usize) -> Vec<f32> {
         o[i * classes + c] = 1.0;
     }
     o
-}
-
-fn accuracy(logits: &[f32], labels: &[usize]) -> f32 {
-    let classes = logits.len() / labels.len();
-    let correct =
-        labels.iter().enumerate().filter(|&(i, &lab)| argmax(&logits[i * classes..(i + 1) * classes]) == lab).count();
-    correct as f32 / labels.len() as f32
-}
-
-fn argmax(row: &[f32]) -> usize {
-    row.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).map(|(i, _)| i).unwrap_or(0)
 }

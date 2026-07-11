@@ -48,6 +48,16 @@ fn return_sequences_stacks_time() {
     assert!(y.realize().iter().all(|&v| v == 0.0));
 }
 
+// A wrong-rank (but otherwise valid) input Errs at the layer instead of panicking on
+// an unchecked shape index -- both cells want rank-3 [B,T,in].
+#[test]
+fn wrong_rank_errors() {
+    let ctx = Ctx::cpu();
+    let x = ctx.zeros(vec![2, IN]); // rank 2, missing the time axis
+    assert!(Lstm::new(&ctx, IN, H, 1).forward(&x).is_err());
+    assert!(Gru::new(&ctx, IN, H, 1).forward(&x).is_err());
+}
+
 // Build the loss graph once, train with Adam over `epochs`, return final train acc.
 fn train(
     ctx: &Ctx,
@@ -86,9 +96,9 @@ fn train(
         b.feed_x(ctx, xin.node());
         ctx.feed(targets.node(), one_hot(b.y_class(), CLASSES), vec![BATCH, CLASSES]);
         lf = loss.item();
-        let lg = logits.realize();
+        let preds = argmax(&logits, 1);
         for (i, &lab) in b.y_class().iter().enumerate() {
-            if argmax(&lg[i * CLASSES..(i + 1) * CLASSES]) == lab {
+            if preds[i] == lab {
                 correct += 1;
             }
             total += 1;
@@ -126,10 +136,6 @@ fn make_data(per_class: usize, seed: u64) -> (Vec<f32>, Vec<usize>) {
         }
     }
     (x, y)
-}
-
-fn argmax(row: &[f32]) -> usize {
-    row.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).map(|(k, _)| k).unwrap_or(0)
 }
 
 fn next(state: &mut u64) -> u64 {

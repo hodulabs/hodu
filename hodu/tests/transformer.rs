@@ -95,6 +95,15 @@ fn indivisible_heads_error() {
     assert!(TransformerEncoder::new(&ctx, 12, 4, 2, false, false, 0).is_ok());
 }
 
+// A wrong-rank input Errs at the attention layer instead of panicking on the unchecked
+// [B,S,d] shape index -- it wants rank 3.
+#[test]
+fn attention_wrong_rank_errors() {
+    let ctx = Ctx::cpu();
+    let mha = MultiHeadAttention::new(&ctx, D, HEADS, false, false, 0).unwrap();
+    assert!(mha.forward(&ctx.zeros(vec![BATCH, D])).is_err()); // rank 2, missing the seq axis
+}
+
 // emb -> encoder -> mean-pool over sequence -> classifier.
 fn forward(emb: &Embedding, enc: &TransformerEncoder, head: &Linear, idx: &Tensor) -> Tensor {
     let h = emb.forward(idx).unwrap(); // [B, S, D]
@@ -118,9 +127,9 @@ fn train_accuracy(ctx: &Ctx, idx: &Tensor, targets: &Tensor, logits: &Tensor, se
     let (mut correct, mut total) = (0usize, 0usize);
     for chunk in (0..labels.len()).collect::<Vec<_>>().chunks_exact(BATCH) {
         feed_batch(ctx, idx, targets, seqs, labels, chunk);
-        let lg = logits.realize();
+        let preds = argmax(logits, 1);
         for (i, &s) in chunk.iter().enumerate() {
-            if argmax(&lg[i * CLASSES..(i + 1) * CLASSES]) == labels[s] {
+            if preds[i] == labels[s] {
                 correct += 1;
             }
             total += 1;
@@ -160,10 +169,6 @@ fn one_hot(labels: &[usize], classes: usize) -> Vec<f32> {
         o[i * classes + c] = 1.0;
     }
     o
-}
-
-fn argmax(row: &[f32]) -> usize {
-    row.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).map(|(i, _)| i).unwrap_or(0)
 }
 
 // splitmix64 draw.

@@ -5,6 +5,7 @@
 
 pub mod data;
 pub mod loss;
+pub mod metrics;
 pub mod nn;
 pub mod optim;
 pub mod prelude;

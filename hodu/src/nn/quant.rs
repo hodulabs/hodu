@@ -10,7 +10,7 @@
 //! recovered exactly by the f32->f16 cast); this keeps the frontend `half`-free while the
 //! op still sees the F16 it requires.
 use crate::nn::linear::Linear;
-use crate::nn::{Buffer, Module, Param, QBuffer};
+use crate::nn::{Buffer, Module, Param, QBuffer, QuantDescriptor};
 use hodu_core::kurumi::quantize;
 use hodu_core::{Ctx, Error, Tensor};
 
@@ -77,5 +77,20 @@ impl Module for QuantLinear {
     }
     fn byte_buffers(&self) -> Vec<QBuffer> {
         vec![self.qweight.clone()]
+    }
+    fn quant_descriptors(&self, prefix: &str) -> Vec<QuantDescriptor> {
+        // FQNs must match the `number()` counter the named_* walks use: one running index over
+        // params (bias -> 0), then buffers (scales, then mins if asymmetric), then byte-buffers
+        // (qweight). So scales = prefix+np, mins = prefix+(np+1), qweight = prefix+(np+nb).
+        let np = self.parameters().len(); // bias -> 1
+        let nb = self.buffers().len(); // scales [+ mins] -> 1 or 2
+        vec![QuantDescriptor {
+            weight_fqn: format!("{prefix}{}", np + nb),
+            bits: self.bits,
+            group_size: self.group_size,
+            symmetric: self.mins.is_none(),
+            scales_fqn: format!("{prefix}{np}"),
+            mins_fqn: self.mins.as_ref().map(|_| format!("{prefix}{}", np + 1)),
+        }]
     }
 }

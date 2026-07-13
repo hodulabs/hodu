@@ -156,3 +156,46 @@ fn symmetric_round_trip_preserves_forward() {
     assert_eq!(after, want, "symmetric (mins=None) quant weights must round-trip through save/load");
     std::fs::remove_file(&path).ok();
 }
+
+// The persisted descriptor's FQNs must reference the SAME rows the named-buffer walks write,
+// or a reader could not resolve the scheme to its weight. Pins the alignment for a QuantLinear
+// in a Sequential (both asymmetric = mins present, and symmetric = mins None).
+#[test]
+fn descriptor_fqns_match_rows() {
+    let ctx = Ctx::cpu();
+    for symmetric in [false, true] {
+        let ql = QuantLinear::from_linear(&linear_with_bias(&ctx, 7), 4, GS, symmetric).unwrap();
+        let model = Sequential::new(vec![Box::new(ql)]);
+        let descs = model.quant_descriptors("");
+        assert_eq!(descs.len(), 1, "one descriptor per QuantLinear");
+        let d = &descs[0];
+
+        let byte_fqns: Vec<String> = model.named_byte_buffers("").into_iter().map(|(n, _)| n).collect();
+        let buf_fqns: Vec<String> = model.named_buffers("").into_iter().map(|(n, _)| n).collect();
+        assert!(byte_fqns.contains(&d.weight_fqn), "weight_fqn {} not among byte-buffers {byte_fqns:?}", d.weight_fqn);
+        assert!(buf_fqns.contains(&d.scales_fqn), "scales_fqn {} not among buffers {buf_fqns:?}", d.scales_fqn);
+        match &d.mins_fqn {
+            Some(m) => assert!(buf_fqns.contains(m), "mins_fqn {m} not among buffers {buf_fqns:?}"),
+            None => assert!(symmetric, "mins_fqn must be None only for the symmetric scheme"),
+        }
+        assert_eq!(d.symmetric, symmetric);
+        assert_eq!((d.bits, d.group_size), (4, GS));
+    }
+}
+
+// Loading a .hodu whose descriptor disagrees with the model's scheme must error, not silently
+// run a wrong dequant. Save int4, load into an int8-built QuantLinear.
+#[test]
+fn load_rejects_wrong_scheme() {
+    let path = std::env::temp_dir().join("hodu_quant_wrong_scheme.hodu");
+    let ctx = Ctx::cpu();
+    let model =
+        Sequential::new(vec![Box::new(QuantLinear::from_linear(&linear_with_bias(&ctx, 7), 4, GS, true).unwrap())]);
+    save(&path, &model).unwrap();
+
+    let ctx2 = Ctx::cpu();
+    let wrong =
+        Sequential::new(vec![Box::new(QuantLinear::from_linear(&linear_with_bias(&ctx2, 7), 8, GS, true).unwrap())]);
+    assert!(load(&path, &wrong).is_err(), "int4 file loaded into an int8 QuantLinear must be rejected");
+    std::fs::remove_file(&path).ok();
+}

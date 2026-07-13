@@ -8,6 +8,8 @@ license.workspace = true
 
 [dependencies]
 hodu_core = { path = "../hodu_core", version = "0.3.0" }
+safetensors = "0.6"  # HuggingFace .safetensors interop (frontend-only; kurumi stays dep-light)
+memmap2 = "0.9"  # mmap-backed zero-copy .hodu weight loading (frontend-only; kurumi stays lean)
 
 [lints]
 workspace = true

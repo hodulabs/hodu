@@ -26,7 +26,7 @@ fn save_runnable_round_trips() {
 
     // save_runnable prunes to the forward cone, so the blob is smaller than a whole-arena
     // serialize that would still carry the backward nodes.
-    let (_, blob) = read_container(&path).unwrap();
+    let (_, _, blob) = read_container(&path).unwrap();
     assert!(!blob.is_empty(), "the runnable artifact must carry a graph section");
     let mut whole: Vec<InputBinding> = lin
         .named_parameters("")
@@ -38,6 +38,31 @@ fn save_runnable_round_trips() {
     assert!(blob.len() < whole_blob.len(), "backward nodes not pruned ({} vs {})", blob.len(), whole_blob.len());
 
     // load + run through the public API: weights from the rows, "x" from the caller.
+    let model = load_runnable(&path).unwrap();
+    assert_eq!(model.input_names(), vec!["x"]);
+    let got = model.run(&CpuBackend, &[("x", Storage::F32(xs))]).unwrap();
+    assert_eq!(got[0].f32(), want.as_slice());
+
+    std::fs::remove_file(&path).ok();
+}
+
+// A 2-entry artifact ("forward" + a scaled variant sharing the weights) saves, then the
+// forward (entry 0) loads and runs from the file alone to the exact forward value.
+#[test]
+fn save_multi_forward_round_trips() {
+    let ctx = Ctx::cpu();
+    let lin = Linear::new(&ctx, 2, 1, 0);
+    let x = ctx.input(vec![3, 2]);
+    let xs = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+    ctx.feed(x.node(), xs.clone(), vec![3, 2]);
+    let y = lin.forward(&x).unwrap();
+    let want = ctx.eval_f32(y.node());
+    let y2 = y.relu(); // a second entry: a distinct output cone over the same shared weights
+
+    let path = std::env::temp_dir().join("hodu_save_multi_test.hodu");
+    save_multi(&path, &lin, &[("forward", &[&y], &[("x", &x)]), ("relu", &[&y2], &[("x", &x)])]).unwrap();
+
+    // load_runnable loads entry 0 (forward) and runs it.
     let model = load_runnable(&path).unwrap();
     assert_eq!(model.input_names(), vec!["x"]);
     let got = model.run(&CpuBackend, &[("x", Storage::F32(xs))]).unwrap();
@@ -145,5 +170,27 @@ fn gen_cross_frontend_batchnorm_fixture() {
     println!("wrote {}", path.display());
     for (name, b) in bn.named_buffers("") {
         println!("K_BUFFER {name}: shape {:?} = {:?}", b.shape(), b.value());
+    }
+}
+
+// Dev tool (run with --ignored --nocapture): (re)generate the cross-frontend QUANT fixture.
+// A plain save() of a Sequential[QuantLinear] (asymmetric int4) writes the v2 quant-descriptor
+// table; hodu-py reads it at the byte level to prove both frontends agree on the descriptor
+// format (bits/group_size/symmetric + FQNs referencing the qweight/scales/mins rows).
+#[test]
+#[ignore = "regenerates the committed hodu-py cross-frontend quant fixture; run manually"]
+fn gen_cross_frontend_quant_fixture() {
+    use crate::nn::{QuantLinear, Sequential};
+    let ctx = Ctx::cpu();
+    let src = Linear::new(&ctx, 32, 8, 0); // in=32 (multiple of group_size=16), out=8
+    let ql = QuantLinear::from_linear(&src, 4, 16, false).unwrap(); // int4, asymmetric -> mins present
+    let model = Sequential::new(vec![Box::new(ql) as Box<dyn crate::nn::Module>]);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../hodu-py/tests/fixtures/quant.hodu");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    crate::serialize::save(&path, &model).unwrap();
+
+    println!("wrote {}", path.display());
+    for d in model.quant_descriptors("") {
+        println!("descriptor {d:?}");
     }
 }

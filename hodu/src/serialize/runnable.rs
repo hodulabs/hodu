@@ -4,7 +4,7 @@
 use crate::Tensor;
 use crate::kurumi::{
     Backend, DType, Feeds, Graph, InputBinding, InputRole, NodeId, Storage, TensorVal, deserialize_graph,
-    serialize_reachable,
+    serialize_multi, serialize_reachable,
 };
 use crate::nn::Module;
 use crate::serialize::container::{DT_U8, Entry, bytes_to_f32, inval, meta, read_container, write_container};
@@ -53,7 +53,54 @@ pub fn save_runnable(
     }
     let out_ids: Vec<NodeId> = outputs.iter().map(|t| t.node()).collect();
     let blob = first.ctx().with_graph(|g| serialize_reachable(g, &out_ids, &inputs));
-    write_container(path, &meta(), &model_entries(model), &blob)
+    write_container(path, &meta(), &model_entries(model), &model.quant_descriptors(""), &blob)
+}
+
+/// One entry point for [`save_multi`]: its name, output tensors, and (name, tensor) runtime inputs.
+pub type EntrySpec<'a> = (&'a str, &'a [&'a Tensor], &'a [(&'a str, &'a Tensor)]);
+
+/// Write a MULTI-ENTRY runnable artifact: the weight rows plus one graph blob carrying N named
+/// entry points (e.g. `("forward", ..)` and `("forward_backward", ..)`), all sharing one node
+/// arena. The model's weights (params/buffers + internal RNG Inputs) are bound once and shared;
+/// each entry adds its own outputs and runtime inputs. Only the union of every entry's output
+/// cone is written. [`load_runnable`] loads entry 0 (list the forward/inference entry first).
+pub fn save_multi(path: impl AsRef<Path>, model: &dyn Module, entries: &[EntrySpec<'_>]) -> io::Result<()> {
+    let first = entries.first().and_then(|(_, outs, _)| outs.first());
+    let Some(first) = first else {
+        return Err(inval("save_multi: no entry outputs given"));
+    };
+    let ctx = first.ctx();
+    // Shared weight bindings (params/buffers/byte-buffers + internal RNG Inputs under RNG_MARK),
+    // bound once and reused by every entry. serialize_multi drops any unreachable from an entry.
+    let mut weights: Vec<InputBinding> = Vec::new();
+    for (name, p) in model.named_parameters("") {
+        weights.push(InputBinding { node: p.tensor().node(), role: InputRole::Weight, name });
+    }
+    for (name, b) in model.named_buffers("") {
+        weights.push(InputBinding { node: b.tensor().node(), role: InputRole::Weight, name });
+    }
+    for (name, b) in model.named_byte_buffers("") {
+        weights.push(InputBinding { node: b.tensor().node(), role: InputRole::Weight, name });
+    }
+    for (i, (node, _dt)) in ctx.rng_inputs().into_iter().enumerate() {
+        weights.push(InputBinding { node, role: InputRole::Weight, name: format!("{RNG_MARK}{i}") });
+    }
+    // Per entry: outputs + (shared weights ++ this entry's runtime inputs).
+    let per_entry: Vec<(&str, Vec<NodeId>, Vec<InputBinding>)> = entries
+        .iter()
+        .map(|&(name, outs, runtime_inputs)| {
+            let out_ids: Vec<NodeId> = outs.iter().map(|t| t.node()).collect();
+            let mut inputs = weights.clone();
+            for &(rn, t) in runtime_inputs {
+                inputs.push(InputBinding { node: t.node(), role: InputRole::Runtime, name: rn.to_string() });
+            }
+            (name, out_ids, inputs)
+        })
+        .collect();
+    let refs: Vec<(&str, &[NodeId], &[InputBinding])> =
+        per_entry.iter().map(|(n, o, i)| (*n, o.as_slice(), i.as_slice())).collect();
+    let blob = ctx.with_graph(|g| serialize_multi(g, &refs));
+    write_container(path, &meta(), &model_entries(model), &model.quant_descriptors(""), &blob)
 }
 
 /// A `.hodu` runnable artifact loaded back into memory: the rebuilt forward graph, its weight
@@ -103,7 +150,9 @@ impl RunnableModel {
 /// [`RunnableModel`] just needs the runtime inputs at [`run`](RunnableModel::run) time. Errors on
 /// a non-runnable file (no graph section), a malformed blob, or a weight the rows are missing.
 pub fn load_runnable(path: impl AsRef<Path>) -> io::Result<RunnableModel> {
-    let (entries, blob) = read_container(path)?;
+    // The quant-descriptor table is informational for a runnable (weights are bound by name from
+    // the rows / baked into the graph), so it is read and ignored here.
+    let (entries, _descriptors, blob) = read_container(path)?;
     if blob.is_empty() {
         return Err(inval("load_runnable: .hodu has no graph section (not a runnable artifact)"));
     }

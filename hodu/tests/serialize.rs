@@ -1,8 +1,10 @@
-//! `.hodu` v1 container: named params + buffers round-trip, self-describing load
+//! `.hodu` v3 container: named params + buffers round-trip, self-describing load
 //! (mismatch errors clearly), BatchNorm running stats survive save/load (the eval
-//! correctness bug), and optimizer state resumes a training run.
+//! correctness bug), and optimizer state resumes a training run. v3 splits the metadata
+//! from a page-aligned data region so the file is mmap-able (see the mmap tests below).
 use hodu::kurumi::{CpuBackend, Storage};
 use hodu::prelude::*;
+use hodu::serialize::{MmapModel, load_mmap};
 
 fn mlp(ctx: &Ctx, seed: u64) -> Sequential {
     Sequential::new(vec![
@@ -35,6 +37,50 @@ fn hodu_save_load_round_trip() {
     let after = fresh.forward(&x2).unwrap().realize();
     assert_eq!(after, want, "loaded weights must reproduce the saved model exactly");
 
+    std::fs::remove_file(&path).ok();
+}
+
+// v3 layout: the file is VERSION 3 and its data-region base is 4K page-aligned (the mmap unit).
+#[test]
+fn v3_layout_is_page_aligned() {
+    let path = std::env::temp_dir().join("hodu_v3_layout.hodu");
+    let ctx = Ctx::cpu();
+    save(&path, &mlp(&ctx, 0)).unwrap();
+
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..4], b"HODU");
+    assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 3, "container must be VERSION 3");
+
+    let m = MmapModel::open(&path).unwrap();
+    assert_eq!(m.region_offset() % 4096, 0, "data-region base must be 4K page-aligned for mmap");
+    std::fs::remove_file(&path).ok();
+}
+
+// The mmap reader reproduces the eager load bit-for-bit without reading the file whole: a fresh
+// model loaded via load_mmap runs identically to the saved one, and MmapModel exposes each
+// tensor as a zero-copy &[u8] view into the page-aligned data region.
+#[test]
+fn load_mmap_matches_eager() {
+    let path = std::env::temp_dir().join("hodu_mmap_load.hodu");
+    let ctx = Ctx::cpu();
+    let trained = mlp(&ctx, 0);
+    let x = ctx.constant(vec![0.5, -1.0, 2.0], vec![1, 3]);
+    let want = trained.forward(&x).unwrap().realize();
+    save(&path, &trained).unwrap();
+
+    // load_mmap into a fresh (differently-initialized) model -> same forward as the saved one.
+    let ctx2 = Ctx::cpu();
+    let fresh = mlp(&ctx2, 100);
+    let x2 = ctx2.constant(vec![0.5, -1.0, 2.0], vec![1, 3]);
+    assert_ne!(fresh.forward(&x2).unwrap().realize(), want, "different init should differ before load");
+    load_mmap(&path, &fresh).unwrap();
+    assert_eq!(fresh.forward(&x2).unwrap().realize(), want, "mmap load must reproduce the saved model");
+
+    // structural: the mapping is live and a tensor's bytes are a zero-copy slice of the map,
+    // matching what the eager reader would return for the same tensor.
+    let m = MmapModel::open(&path).unwrap();
+    assert_eq!(m.len(), 4, "two Linear layers -> 4 param tensors (w+b each)");
+    assert!(!m.is_empty() && !m.bytes(0).is_empty(), "tensor 0 must be a non-empty view into the mapping");
     std::fs::remove_file(&path).ok();
 }
 

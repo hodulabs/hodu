@@ -1,7 +1,7 @@
 //! The model<->rows bridge: a Module's named params/buffers/byte-buffers become tensor-table
 //! rows (model_entries), and rows load back into a live model by name (apply_to_model). The
 //! on-disk byte format itself lives in container.rs.
-use crate::nn::Module;
+use crate::nn::{Module, QuantDescriptor};
 use crate::serialize::container::{
     DT_F32, DT_U8, Entry, K_BUFFER, K_OPTIM, K_PARAM, K_QBUFFER, bytes_to_f32, f32_to_bytes, inval,
 };
@@ -71,9 +71,31 @@ fn take(
     Err(inval(format!("model {} '{name}' is missing from the .hodu file", kind_name(kind))))
 }
 
+// The file's quant schemes must match what the live model reconstructs: a QuantLinear built
+// with the wrong bits/group_size/symmetric would silently run a wrong dequant. Compared by FQN
+// (the descriptor names the same rows the named_* walks do). Run before applying rows so this
+// clear message wins over the shape mismatch a wrong scheme also happens to trigger.
+fn check_descriptors(file: &[QuantDescriptor], model: &dyn Module) -> io::Result<()> {
+    for want in model.quant_descriptors("") {
+        let got = file
+            .iter()
+            .find(|d| d.weight_fqn == want.weight_fqn)
+            .ok_or_else(|| inval(format!("quant weight '{}' has no descriptor in the .hodu file", want.weight_fqn)))?;
+        if *got != want {
+            return Err(inval(format!(
+                "quant scheme mismatch for '{}': file(bits={}, group_size={}, symmetric={}) != model(bits={}, group_size={}, symmetric={})",
+                want.weight_fqn, got.bits, got.group_size, got.symmetric, want.bits, want.group_size, want.symmetric
+            )));
+        }
+    }
+    Ok(())
+}
+
 // Populate the live model's params + buffers by name; error on any missing or extra
-// (non-optim) tensor. optim rows are left for the caller (load_checkpoint) to apply.
-pub(super) fn apply_to_model(entries: &[Entry], model: &dyn Module) -> io::Result<()> {
+// (non-optim) tensor, or on a quant scheme that disagrees with the file's descriptor. optim
+// rows are left for the caller (load_checkpoint) to apply.
+pub(super) fn apply_to_model(entries: &[Entry], descriptors: &[QuantDescriptor], model: &dyn Module) -> io::Result<()> {
+    check_descriptors(descriptors, model)?;
     let mut used = vec![false; entries.len()];
     for (name, p) in model.named_parameters("") {
         let bytes = take(entries, &mut used, K_PARAM, &name, p.shape(), DT_F32)?;

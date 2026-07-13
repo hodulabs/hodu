@@ -31,6 +31,21 @@ pub use linear::Linear;
 pub use norm::{BatchNorm, BatchNorm1d, BatchNorm2d, GroupNorm, InstanceNorm, LayerNorm, RmsNorm};
 pub use pool::{AvgPool2d, MaxPool2d};
 pub use quant::QuantLinear;
+
+/// A quantized weight's self-describing scheme, persisted in the `.hodu` container's
+/// descriptor table so a quant file can be read back (and validated) without hardcoding
+/// bits/group_size in code. The FQN fields name the container rows this scheme owns -- the
+/// SAME FQNs the `named_*` walks assign -- so a reader resolves them against the tensor
+/// table. Affine group-wise (weight-only int4/int8) is the only scheme today.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuantDescriptor {
+    pub weight_fqn: String,       // the packed U8 qweight's byte-buffer FQN
+    pub bits: u8,                 // 4 or 8
+    pub group_size: usize,        // columns per scale along the contraction axis
+    pub symmetric: bool,          // true = signed (no mins); false = affine with mins
+    pub scales_fqn: String,       // the f32 scales buffer FQN
+    pub mins_fqn: Option<String>, // the f32 mins buffer FQN; None = symmetric
+}
 pub use rnn::{Gru, Lstm};
 pub use sequential::Sequential;
 pub use transformer::{TransformerBlock, TransformerEncoder};
@@ -110,6 +125,14 @@ pub trait Module {
             return number(prefix, self.parameters().len() + self.buffers().len(), self.byte_buffers());
         }
         children.iter().flat_map(|(name, c)| c.named_byte_buffers(&format!("{prefix}{name}."))).collect()
+    }
+
+    /// The quant schemes this module owns, keyed by FQN under `prefix` -- the descriptor
+    /// table `save` persists. A quant leaf (`QuantLinear`) overrides to report its own with
+    /// FQNs matching its `named_byte_buffers`/`named_buffers`; a container recurses children
+    /// exactly like the other named walks, so the FQNs stay aligned. A plain leaf owns none.
+    fn quant_descriptors(&self, prefix: &str) -> Vec<QuantDescriptor> {
+        self.children().iter().flat_map(|(name, c)| c.quant_descriptors(&format!("{prefix}{name}."))).collect()
     }
 }
 

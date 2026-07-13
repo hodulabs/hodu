@@ -8,17 +8,20 @@
 //!
 //! This persists BatchNorm running stats (buffers), so eval-mode inference is correct
 //! after a round-trip; `save_checkpoint` additionally stores optimizer state (moments
-//! + step) for training resume. std only, no serde.
+//! + step) for training resume. std + memmap2 (frontend-only) for the mmap reader, no serde.
 //!
-//! Next step (hodu-plan/02-artifact-format.md): promote this flat table to
-//! section-offset regions with 4K page alignment for mmap. The name/kind/dtype/shape
-//! schema here is exactly the table that layout builds on.
+//! v3 (container.rs) splits the small metadata region from a 4K-page-aligned DATA REGION so the
+//! file is mmap-able: [`load`] reads eagerly (back-compat), [`load_mmap`] maps the file and
+//! copies weights out of the page-aligned region on demand -- a large model is never read whole.
 
 mod container;
 mod model;
 mod runnable;
+mod safetensors;
 
-pub use runnable::{RunnableModel, load_runnable, save_runnable};
+pub use container::MmapModel;
+pub use runnable::{RunnableModel, load_runnable, save_multi, save_runnable};
+pub use safetensors::{apply_safetensors, load_safetensors};
 
 use crate::nn::Module;
 use crate::optim::OptState;
@@ -27,17 +30,28 @@ use model::{apply_to_model, model_entries};
 use std::io;
 use std::path::Path;
 
-/// Write a model's params + buffers (named, self-describing) to `path`.
+/// Write a model's params + buffers (named, self-describing) to `path`, plus a quant-descriptor
+/// table so any `QuantLinear`'s scheme (bits/group_size/symmetric) is self-describing.
 pub fn save(path: impl AsRef<Path>, model: &dyn Module) -> io::Result<()> {
-    write_container(path, &meta(), &model_entries(model), &[])
+    write_container(path, &meta(), &model_entries(model), &model.quant_descriptors(""), &[])
 }
 
 /// Load params + buffers from `path` into `model` by name. Errors on bad
 /// magic/version, an unknown dtype, or any missing / extra / shape-mismatched tensor.
 /// Optimizer rows (from a checkpoint) are ignored -- only the model state is applied.
 pub fn load(path: impl AsRef<Path>, model: &dyn Module) -> io::Result<()> {
-    let (entries, _) = read_container(path)?;
-    apply_to_model(&entries, model)
+    let (entries, descriptors, _) = read_container(path)?;
+    apply_to_model(&entries, &descriptors, model)
+}
+
+/// Load params + buffers into `model` by memory-mapping `path` instead of reading it whole: the
+/// metadata is parsed eagerly (small) and each tensor is copied out of the page-aligned, mmap'd
+/// data region on demand -- so a large model's file is paged in lazily, not slurped into RAM.
+/// Same result as [`load`]; the mapping is dropped when this returns. For zero-copy `&[u8]` views
+/// held for the model's lifetime, use [`MmapModel`] directly.
+pub fn load_mmap(path: impl AsRef<Path>, model: &dyn Module) -> io::Result<()> {
+    let m = MmapModel::open(path)?;
+    apply_to_model(&m.entries(), m.descriptors(), model)
 }
 
 /// Write model (params + buffers) AND optimizer state (moments + step) so a training
@@ -47,14 +61,14 @@ pub fn save_checkpoint(path: impl AsRef<Path>, model: &dyn Module, opt: &dyn Opt
     for (name, data) in opt.state_dict() {
         entries.push(Entry { name, kind: K_OPTIM, dtype: DT_F32, shape: vec![data.len()], data: f32_to_bytes(&data) });
     }
-    write_container(path, &meta(), &entries, &[])
+    write_container(path, &meta(), &entries, &model.quant_descriptors(""), &[])
 }
 
 /// Restore model AND optimizer from a checkpoint written by [`save_checkpoint`], so a
 /// run resumes with moments + step intact.
 pub fn load_checkpoint(path: impl AsRef<Path>, model: &dyn Module, opt: &mut dyn OptState) -> io::Result<()> {
-    let (entries, _) = read_container(path)?;
-    apply_to_model(&entries, model)?;
+    let (entries, descriptors, _) = read_container(path)?;
+    apply_to_model(&entries, &descriptors, model)?;
     let optim_sd: Vec<(String, Vec<f32>)> =
         entries.iter().filter(|e| e.kind == K_OPTIM).map(|e| (e.name.clone(), bytes_to_f32(&e.data))).collect();
     opt.load_state_dict(&optim_sd).map_err(|e| inval(format!("{e:?}")))

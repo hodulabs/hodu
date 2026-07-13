@@ -21,14 +21,14 @@
 //! is SIMD-friendly at a small padding cost.
 mod descriptor;
 mod mmap;
+mod read;
+mod write;
 
 pub use mmap::MmapModel;
+pub(super) use read::{read_container, read_meta};
+pub(super) use write::write_container;
 
-use crate::nn::QuantDescriptor;
-use descriptor::{read_descriptors, write_descriptors};
-use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Seek, Write};
-use std::path::Path;
+use std::io::{self, Read, Write};
 
 const MAGIC: &[u8; 4] = b"HODU";
 const VERSION: u32 = 3; // v3 splits metadata from a page-aligned, mmap-able data region
@@ -110,134 +110,4 @@ pub(super) fn f32_to_bytes(v: &[f32]) -> Vec<u8> {
 
 pub(super) fn bytes_to_f32(b: &[u8]) -> Vec<f32> {
     b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
-}
-
-// `descriptors` is the quant-descriptor table (empty for a non-quant model -> just a 4-byte
-// zero count). It sits AFTER the tensor table and BEFORE the graph blob.
-//
-// `graph` is the optional runnable-graph blob (a `save_runnable` artifact), written as a
-// `[u64 len][bytes]` section after the descriptor table (len 0 if none). It stays in the small
-// metadata region -- only the tensor payloads move to the page-aligned data region.
-pub(super) fn write_container(
-    path: impl AsRef<Path>,
-    meta: &[(&str, &str)],
-    tensors: &[Entry],
-    descriptors: &[QuantDescriptor],
-    graph: &[u8],
-) -> io::Result<()> {
-    // Assign each tensor a data-region offset: running sum of nbytes, 64B-aligned per tensor.
-    let mut offsets = Vec::with_capacity(tensors.len());
-    let mut off = 0u64;
-    for t in tensors {
-        off = align_up(off, TENSOR_ALIGN);
-        offsets.push(off);
-        off += t.data.len() as u64;
-    }
-
-    // Build the metadata region in memory (it is small by design), so its exact length -- and
-    // thus the page-aligned data-region base -- is known before writing.
-    let mut m: Vec<u8> = Vec::new();
-    m.write_all(MAGIC)?;
-    m.write_all(&VERSION.to_le_bytes())?;
-    m.write_all(&(meta.len() as u32).to_le_bytes())?;
-    for (k, v) in meta {
-        write_str(&mut m, k)?;
-        write_str(&mut m, v)?;
-    }
-    m.write_all(&(tensors.len() as u32).to_le_bytes())?;
-    for (t, &o) in tensors.iter().zip(&offsets) {
-        write_str(&mut m, &t.name)?;
-        m.write_all(&[t.kind, t.dtype])?;
-        m.write_all(&(t.shape.len() as u32).to_le_bytes())?;
-        for &d in &t.shape {
-            m.write_all(&(d as u64).to_le_bytes())?;
-        }
-        m.write_all(&o.to_le_bytes())?; // data_offset (into the data region)
-        m.write_all(&(t.data.len() as u64).to_le_bytes())?; // nbytes
-    }
-    write_descriptors(&mut m, descriptors)?;
-    m.write_all(&(graph.len() as u64).to_le_bytes())?; // always present (0 len if none)
-    m.write_all(graph)?;
-
-    let region_base = align_up(m.len() as u64, REGION_ALIGN);
-    let pad = (region_base - m.len() as u64) as usize;
-
-    let mut w = BufWriter::new(File::create(path)?);
-    w.write_all(&m)?;
-    w.write_all(&vec![0u8; pad])?; // pad to the page boundary
-    // Data region: payloads in offset order, zero-padding the intra-tensor alignment gaps.
-    let mut written = 0u64;
-    for (t, &o) in tensors.iter().zip(&offsets) {
-        if o > written {
-            w.write_all(&vec![0u8; (o - written) as usize])?;
-        }
-        w.write_all(&t.data)?;
-        written = o + t.data.len() as u64;
-    }
-    w.flush()
-}
-
-// Parse the metadata region (magic..graph blob) from a seekable reader, leaving the cursor at
-// the metadata end so the caller can compute the page-aligned data-region base. Shared by the
-// eager reader and the mmap reader.
-pub(super) fn read_meta(r: &mut (impl Read + Seek)) -> io::Result<(Vec<TensorMeta>, Vec<QuantDescriptor>, Vec<u8>)> {
-    let mut magic = [0u8; 4];
-    r.read_exact(&mut magic)?;
-    if &magic != MAGIC {
-        return Err(inval("not a .hodu file (bad magic)"));
-    }
-    let version = read_u32(r)?;
-    if version != VERSION {
-        return Err(inval(format!("unsupported .hodu version {version} (this build reads v{VERSION})")));
-    }
-    // meta is extensible and nothing here is required yet -> read and skip.
-    let meta_n = read_u32(r)? as usize;
-    for _ in 0..meta_n {
-        read_str(r)?;
-        read_str(r)?;
-    }
-    let n = read_u32(r)? as usize;
-    let mut metas = Vec::with_capacity(n);
-    for _ in 0..n {
-        let name = read_str(r)?;
-        let mut tags = [0u8; 2];
-        r.read_exact(&mut tags)?;
-        let (kind, dtype) = (tags[0], tags[1]);
-        if dtype != DT_F32 && dtype != DT_U8 {
-            return Err(inval(format!("tensor '{name}': unsupported dtype tag {dtype}")));
-        }
-        let rank = read_u32(r)? as usize;
-        let mut shape = Vec::with_capacity(rank);
-        for _ in 0..rank {
-            shape.push(read_u64(r)? as usize);
-        }
-        let offset = read_u64(r)?;
-        let nbytes = read_u64(r)?;
-        metas.push(TensorMeta { name, kind, dtype, shape, offset, nbytes });
-    }
-    // quant-descriptor table: 0 for a non-quant model.
-    let descriptors = read_descriptors(r)?;
-    // runnable-graph section: always a [u64 len][bytes] block (len 0 for a weights-only file).
-    let glen = read_u64(r)? as usize;
-    let mut graph = vec![0u8; glen];
-    r.read_exact(&mut graph)?;
-    Ok((metas, descriptors, graph))
-}
-
-// Returns the tensor rows (payloads read from the data region), the quant-descriptor table, and
-// the runnable-graph blob (empty for a weights-only file). Eager path: reads only the metadata
-// then the payloads (skipping alignment padding) -- the rows carry their bytes exactly as before,
-// so apply_to_model / load_runnable are unchanged downstream.
-pub(super) fn read_container(path: impl AsRef<Path>) -> io::Result<(Vec<Entry>, Vec<QuantDescriptor>, Vec<u8>)> {
-    let mut r = BufReader::new(File::open(path)?);
-    let (metas, descriptors, graph) = read_meta(&mut r)?;
-    let region_base = align_up(r.stream_position()?, REGION_ALIGN);
-    let mut out = Vec::with_capacity(metas.len());
-    for tm in metas {
-        r.seek(io::SeekFrom::Start(region_base + tm.offset))?;
-        let mut data = vec![0u8; tm.nbytes as usize];
-        r.read_exact(&mut data)?;
-        out.push(Entry { name: tm.name, kind: tm.kind, dtype: tm.dtype, shape: tm.shape, data });
-    }
-    Ok((out, descriptors, graph))
 }

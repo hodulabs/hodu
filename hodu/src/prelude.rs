@@ -12,8 +12,8 @@ pub use crate::nn::{
     kaiming_normal, normal, uniform, xavier_normal, xavier_uniform,
 };
 pub use crate::optim::{
-    Adam, AdamW, CosineAnnealingLR, LambdaLR, OptState, Sgd, StepLR, accumulate_grads, clip_grad_norm, grad_values,
-    scale_grads,
+    Adam, AdamW, CosineAnnealingLR, GradScaler, LambdaLR, MultiStepLR, OptState, RMSprop, SchedState, Sgd, StepLR,
+    accumulate_grads, clip_grad_norm, grad_values, scale_grads,
 };
 pub use crate::serialize::{
     MmapModel, RunnableModel, apply_safetensors, load, load_checkpoint, load_mmap, load_runnable, load_safetensors,

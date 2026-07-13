@@ -6,12 +6,16 @@
 
 mod adam;
 mod grad;
+mod rmsprop;
+mod scaler;
 mod scheduler;
 mod sgd;
 
 pub use adam::{Adam, AdamW};
 pub use grad::{accumulate_grads, clip_grad_norm, grad_values, scale_grads};
-pub use scheduler::{CosineAnnealingLR, LambdaLR, StepLR};
+pub use rmsprop::RMSprop;
+pub use scaler::GradScaler;
+pub use scheduler::{CosineAnnealingLR, LambdaLR, MultiStepLR, SchedState, StepLR};
 pub use sgd::Sgd;
 
 use hodu_core::Error;
@@ -81,6 +85,16 @@ mod tests {
         assert!((opt.lr() - 0.5).abs() < 1e-9, "lr {}", opt.lr());
         opt.set_lr(sched.step()); // epoch 2 -> 0.25
         assert!((opt.lr() - 0.25).abs() < 1e-9, "lr {}", opt.lr());
+    }
+
+    #[test]
+    fn rmsprop_first_step_scales_by_root() {
+        // sq starts 0: delta = lr*g/(sqrt((1-alpha)*g^2)+eps) = 0.1*2/0.2 = 1.0 -> p 0 -> -1.
+        let ctx = Ctx::cpu();
+        let p = Param::new(&ctx, vec![0.0], vec![1]);
+        let opt = RMSprop::new(vec![p.clone()], 0.1);
+        opt.step(&[vec![2.0]]);
+        assert!((p.value()[0] + 1.0).abs() < 1e-3, "got {}", p.value()[0]);
     }
 
     #[test]

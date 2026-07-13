@@ -6,8 +6,8 @@
 //! / 0.0 eval, like Dropout). The running mean/var are fed Inputs updated host-side:
 //! call `update_running()` once per training step (after feeding the batch) to EMA
 //! them from the current batch stats -- the static-graph analog of PyTorch's buffer
-//! update. Variance is biased (divide by count) for both normalize and running;
-//! PyTorch uses unbiased for the running buffer -- a documented parity gap.
+//! update. Normalization uses the biased var (divide by count); the running buffer
+//! tracks the UNBIASED var (scaled by N/(N-1)), matching PyTorch.
 //! Running stats are `Buffer`s (non-learnable, host-valued), reported via
 //! `Module::buffers` so `save`/`load` persist them -- eval-mode inference is correct
 //! after a round-trip.
@@ -25,6 +25,7 @@ pub struct BatchNorm {
     running_var: Buffer,              // fed Input [C]
     batch_mean: Cell<Option<NodeId>>, // set at forward, read by update_running
     batch_var: Cell<Option<NodeId>>,
+    n: Cell<usize>, // elements reduced per channel (numel/C), for the unbiased running var
     c: usize,
     eps: f32,
     momentum: f32,
@@ -41,6 +42,7 @@ impl BatchNorm {
             running_var: Buffer::new(ctx, vec![1.0; c], vec![c]),
             batch_mean: Cell::new(None),
             batch_var: Cell::new(None),
+            n: Cell::new(0),
             c,
             eps,
             momentum,
@@ -58,10 +60,14 @@ impl BatchNorm {
         let bmv = ctx.eval_f32(bm);
         let bvv = ctx.eval_f32(bv);
         let m = self.momentum;
+        // running var tracks the UNBIASED batch var (PyTorch): scale the biased batch var
+        // by N/(N-1), N = elements reduced per channel. Normalization still uses the biased var.
+        let n = self.n.get();
+        let unbias = if n > 1 { n as f32 / (n as f32 - 1.0) } else { 1.0 };
         let (mut rm, mut rv) = (self.running_mean.value(), self.running_var.value());
         for i in 0..self.c {
             rm[i] = (1.0 - m) * rm[i] + m * bmv[i];
-            rv[i] = (1.0 - m) * rv[i] + m * bvv[i];
+            rv[i] = (1.0 - m) * rv[i] + m * bvv[i] * unbias;
         }
         self.running_mean.set(rm);
         self.running_var.set(rv);
@@ -102,6 +108,7 @@ impl Module for BatchNorm {
         let bvar = per_channel(&centered.square())?; // [C]
         self.batch_mean.set(Some(bmean.node()));
         self.batch_var.set(Some(bvar.node()));
+        self.n.set(x.shape().iter().product::<usize>() / self.c); // elements reduced per channel
         // blend by the fed flag: train -> batch stats, eval -> running stats
         let flag = x.ctx().train_flag(); // [1]
         let ev = &(&flag * -1.0) + 1.0; // eval weight = 1 - flag

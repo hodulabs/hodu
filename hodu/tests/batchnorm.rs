@@ -39,10 +39,26 @@ fn eval_uses_running_stats() {
     ctx.set_training(false);
     let out = y.realize(); // eval: (B - runmean)/sqrt(runvar+eps)
     for r in 0..4 {
-        // c0 = (10-0)/sqrt(1) = 10 ; c1 = (20-0)/sqrt(4) = 10
-        assert!((out[r * 2] - 10.0).abs() < 0.1, "c0 {}", out[r * 2]);
-        assert!((out[r * 2 + 1] - 10.0).abs() < 0.1, "c1 {}", out[r * 2 + 1]);
+        // running var is UNBIASED (biased * N/(N-1), N=4): c0 var 4/3, c1 var 16/3.
+        // c0 = 10/sqrt(4/3) = 8.66 ; c1 = 20/sqrt(16/3) = 8.66
+        assert!((out[r * 2] - 8.66).abs() < 0.05, "c0 {}", out[r * 2]);
+        assert!((out[r * 2 + 1] - 8.66).abs() < 0.05, "c1 {}", out[r * 2 + 1]);
     }
+}
+
+// running var tracks the UNBIASED batch var (PyTorch parity): biased var * N/(N-1).
+#[test]
+fn running_var_is_unbiased() {
+    let ctx = Ctx::cpu();
+    let bn = BatchNorm1d::new(&ctx, 1, 1e-5, 1.0); // momentum 1.0 -> running = this batch
+    let x = ctx.input(vec![3, 1]);
+    let y = bn.forward(&x).unwrap();
+    ctx.feed(x.node(), vec![0., 2., 4.], vec![3, 1]); // mean 2, sum sq dev 8, N=3
+    let _ = y.realize();
+    bn.update_running();
+    // biased var 8/3; unbiased = 8/(3-1) = 4.0.
+    let rv = bn.buffers()[1].value();
+    assert!((rv[0] - 4.0).abs() < 1e-4, "unbiased running var {}", rv[0]);
 }
 
 // (c) an MLP with BatchNorm trains (loss drops) and eval-mode forward runs.

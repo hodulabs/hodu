@@ -280,12 +280,12 @@ fn optimizer_state_resumes_training() {
     // split run: N steps, then checkpoint model + optimizer.
     let mut a = Trainer::new(0);
     a.step_n(n_first);
-    save_checkpoint(&path, &a.model, &a.opt).unwrap();
+    save_checkpoint(&path, &a.model, &a.opt, None).unwrap();
 
     // fresh model+opt (different init, zero moments): load restores params + Adam
     // state, then M more steps should catch up to the uninterrupted run.
     let mut b = Trainer::new(123);
-    load_checkpoint(&path, &b.model, &mut b.opt).unwrap();
+    load_checkpoint(&path, &b.model, &mut b.opt, None).unwrap();
     b.step_n(n_more);
     let got = b.params();
 
@@ -344,12 +344,12 @@ fn sgd_momentum_state_resumes_training() {
     // split run: N steps, then checkpoint model + Sgd velocity.
     let (a_model, a_grads, a_opt) = sgd_harness(0);
     run(&a_opt, &a_grads, n_first);
-    save_checkpoint(&path, &a_model, &a_opt).unwrap();
+    save_checkpoint(&path, &a_model, &a_opt, None).unwrap();
 
     // fresh model+Sgd (different init, zero velocity): load restores params + vel, then
     // M more steps must catch up to the uninterrupted run.
     let (b_model, b_grads, mut b_opt) = sgd_harness(123);
-    load_checkpoint(&path, &b_model, &mut b_opt).unwrap();
+    load_checkpoint(&path, &b_model, &mut b_opt, None).unwrap();
     run(&b_opt, &b_grads, n_more);
     let got = param_snapshot(&b_model);
 
@@ -372,20 +372,43 @@ fn checkpoint_missing_or_mismatched_optim_errors() {
     save(&path, &a.model).unwrap();
     let mut b = Trainer::new(1);
     assert!(
-        load_checkpoint(&path, &b.model, &mut b.opt).is_err(),
+        load_checkpoint(&path, &b.model, &mut b.opt, None).is_err(),
         "a plain file has no optimizer state -> load_checkpoint must Err"
     );
 
     // a real Adam checkpoint, loaded into an Sgd over the SAME model: the model matches
     // but Sgd expects "vel.*" rows an Adam checkpoint never wrote -> Err.
-    save_checkpoint(&path, &a.model, &a.opt).unwrap();
+    save_checkpoint(&path, &a.model, &a.opt, None).unwrap();
     let c = Trainer::new(2);
     let mut sgd = Sgd::new(c.model.parameters(), 0.1);
     assert!(
-        load_checkpoint(&path, &c.model, &mut sgd).is_err(),
+        load_checkpoint(&path, &c.model, &mut sgd, None).is_err(),
         "Adam checkpoint into Sgd (different optim slots) must Err"
     );
 
+    std::fs::remove_file(&path).ok();
+}
+
+// A scheduler's epoch counter round-trips through the checkpoint (the `sched.last_epoch`
+// K_OPTIM row); a file written with a scheduler still loads when none is passed.
+#[test]
+fn scheduler_state_resumes() {
+    let path = std::env::temp_dir().join("hodu_sched_ckpt.hodu");
+    let a = Trainer::new(0);
+    let mut sched = StepLR::new(0.1, 1, 0.5);
+    for _ in 0..3 {
+        sched.step(); // epoch 3
+    }
+    save_checkpoint(&path, &a.model, &a.opt, Some(&sched)).unwrap();
+
+    let mut b = Trainer::new(9);
+    let mut restored = StepLR::new(0.1, 1, 0.5);
+    load_checkpoint(&path, &b.model, &mut b.opt, Some(&mut restored)).unwrap();
+    assert_eq!(restored.last_epoch(), 3, "epoch not restored");
+    assert!((restored.lr() - sched.lr()).abs() < 1e-9, "restored lr {} != {}", restored.lr(), sched.lr());
+
+    // the same checkpoint loads fine with no scheduler (the extra row is ignored).
+    load_checkpoint(&path, &b.model, &mut b.opt, None).unwrap();
     std::fs::remove_file(&path).ok();
 }
 

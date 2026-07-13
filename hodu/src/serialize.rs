@@ -24,7 +24,7 @@ pub use runnable::{RunnableModel, load_runnable, save_multi, save_runnable};
 pub use safetensors::{apply_safetensors, load_safetensors};
 
 use crate::nn::Module;
-use crate::optim::OptState;
+use crate::optim::{OptState, SchedState};
 use container::{DT_F32, Entry, K_OPTIM, bytes_to_f32, f32_to_bytes, inval, meta, read_container, write_container};
 use model::{apply_to_model, model_entries};
 use std::io;
@@ -54,22 +54,56 @@ pub fn load_mmap(path: impl AsRef<Path>, model: &dyn Module) -> io::Result<()> {
     apply_to_model(&m.entries(), m.descriptors(), model)
 }
 
-/// Write model (params + buffers) AND optimizer state (moments + step) so a training
-/// run can resume. Load with [`load_checkpoint`]; plain [`load`] still reads the model.
-pub fn save_checkpoint(path: impl AsRef<Path>, model: &dyn Module, opt: &dyn OptState) -> io::Result<()> {
+// K_OPTIM row name for a scheduler's resumable epoch counter -- a cross-frontend
+// contract with hodu-py, so it must stay exactly this string.
+const SCHED_ROW: &str = "sched.last_epoch";
+
+/// Write model (params + buffers) AND optimizer state (moments + step) so a training run
+/// can resume. Pass a `sched` to also persist its epoch counter (the `sched.last_epoch`
+/// row). Load with [`load_checkpoint`]; plain [`load`] still reads the model.
+pub fn save_checkpoint(
+    path: impl AsRef<Path>,
+    model: &dyn Module,
+    opt: &dyn OptState,
+    sched: Option<&dyn SchedState>,
+) -> io::Result<()> {
     let mut entries = model_entries(model);
     for (name, data) in opt.state_dict() {
         entries.push(Entry { name, kind: K_OPTIM, dtype: DT_F32, shape: vec![data.len()], data: f32_to_bytes(&data) });
     }
+    if let Some(s) = sched {
+        let data = vec![s.last_epoch() as f32];
+        entries.push(Entry {
+            name: SCHED_ROW.to_string(),
+            kind: K_OPTIM,
+            dtype: DT_F32,
+            shape: vec![1],
+            data: f32_to_bytes(&data),
+        });
+    }
     write_container(path, &meta(), &entries, &model.quant_descriptors(""), &[])
 }
 
-/// Restore model AND optimizer from a checkpoint written by [`save_checkpoint`], so a
-/// run resumes with moments + step intact.
-pub fn load_checkpoint(path: impl AsRef<Path>, model: &dyn Module, opt: &mut dyn OptState) -> io::Result<()> {
+/// Restore model AND optimizer from a checkpoint written by [`save_checkpoint`], so a run
+/// resumes with moments + step intact. Pass a `sched` to also restore its epoch counter
+/// from the `sched.last_epoch` row (Errs if a scheduler is given but the row is absent).
+pub fn load_checkpoint(
+    path: impl AsRef<Path>,
+    model: &dyn Module,
+    opt: &mut dyn OptState,
+    sched: Option<&mut dyn SchedState>,
+) -> io::Result<()> {
     let (entries, descriptors, _) = read_container(path)?;
     apply_to_model(&entries, &descriptors, model)?;
     let optim_sd: Vec<(String, Vec<f32>)> =
         entries.iter().filter(|e| e.kind == K_OPTIM).map(|e| (e.name.clone(), bytes_to_f32(&e.data))).collect();
-    opt.load_state_dict(&optim_sd).map_err(|e| inval(format!("{e:?}")))
+    opt.load_state_dict(&optim_sd).map_err(|e| inval(format!("{e:?}")))?;
+    if let Some(s) = sched {
+        let row = entries
+            .iter()
+            .find(|e| e.kind == K_OPTIM && e.name == SCHED_ROW)
+            .ok_or_else(|| inval(format!("checkpoint has no '{SCHED_ROW}' row for the scheduler")))?;
+        s.set_last_epoch(bytes_to_f32(&row.data)[0] as usize);
+    }
+    Ok(())
 }

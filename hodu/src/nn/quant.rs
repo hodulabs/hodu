@@ -56,7 +56,7 @@ impl QuantLinear {
         let qweight = QBuffer::u8(&ctx, q.packed, vec![out, packed_cols]);
         let scales = Buffer::new(&ctx, q.scales.iter().map(|s| s.to_f32()).collect(), vec![out, ng]);
         let mins = q.mins.map(|m| Buffer::new(&ctx, m.iter().map(|v| v.to_f32()).collect(), vec![out, ng]));
-        let bias = Param::new(&ctx, lin.bias().value(), vec![out]);
+        let bias = Param::new(&ctx, lin.bias().map(|b| b.value()).unwrap_or_else(|| vec![0.0; out]), vec![out]);
         Ok(QuantLinear { qweight, scales, mins, bias, bits, group_size })
     }
 }

@@ -32,7 +32,7 @@ const GS: usize = 32; // IN is a multiple of GS
 // f32 Linear with a nonzero bias (so the broadcast add is exercised).
 fn linear_with_bias(ctx: &Ctx, seed: u64) -> Linear {
     let lin = Linear::new(ctx, IN, OUT, seed);
-    lin.bias().set(prng(seed ^ 0xB1A5, OUT));
+    lin.bias().unwrap().set(prng(seed ^ 0xB1A5, OUT));
     lin
 }
 
@@ -48,7 +48,7 @@ fn reference(lin: &Linear, act: &[f32], bits: u8, symmetric: bool) -> Vec<f32> {
     }
     let q = quantize(&wt, OUT, IN, bits, GS, symmetric);
     let mut out = dequant_matmul(act, M, &q); // [M, OUT]
-    let bias = lin.bias().value();
+    let bias = lin.bias().unwrap().value();
     for mi in 0..M {
         for j in 0..OUT {
             out[mi * OUT + j] += bias[j];

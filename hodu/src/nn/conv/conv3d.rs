@@ -4,7 +4,7 @@ use hodu_core::{Ctx, Error, Tensor};
 
 pub struct Conv3d {
     w: Param,
-    b: Param,
+    b: Option<Param>,
     out_ch: usize,
     stride: (usize, usize, usize),
     padding: (usize, usize, usize),
@@ -24,11 +24,11 @@ impl Conv3d {
         padding: (usize, usize, usize),
         seed: u64,
     ) -> Conv3d {
-        Conv3d::with_init(ctx, in_ch, out_ch, kernel, stride, padding, seed, Init::HeUniform)
+        Conv3d::with_init(ctx, in_ch, out_ch, kernel, stride, padding, seed, Init::HeUniform, true)
     }
 
     /// Same as [`Conv3d::new`], with a chosen weight initializer. `fan_in = C*Kd*Kh*Kw`,
-    /// `fan_out = O*Kd*Kh*Kw`.
+    /// `fan_out = O*Kd*Kh*Kw`. `bias=false` drops the bias (no Param, no bias add).
     #[allow(clippy::too_many_arguments)]
     pub fn with_init(
         ctx: &Ctx,
@@ -39,6 +39,7 @@ impl Conv3d {
         padding: (usize, usize, usize),
         seed: u64,
         init: Init,
+        bias: bool,
     ) -> Conv3d {
         let (kd, kh, kw) = kernel;
         let fan_in = in_ch * kd * kh * kw;
@@ -53,7 +54,7 @@ impl Conv3d {
         };
         Conv3d {
             w: Param::new(ctx, w, vec![out_ch, in_ch, kd, kh, kw]),
-            b: Param::new(ctx, vec![0.0; out_ch], vec![out_ch]),
+            b: bias.then(|| Param::new(ctx, vec![0.0; out_ch], vec![out_ch])),
             out_ch,
             stride,
             padding,
@@ -72,12 +73,16 @@ impl Conv3d {
 impl Module for Conv3d {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
         let y = x.conv3d(self.w.tensor(), self.stride, self.padding, self.dilation)?;
-        // bias [O] -> [1, O, 1, 1, 1] broadcasts over N, Do, Ho, Wo.
-        let b = self.b.tensor().reshape(vec![1, self.out_ch, 1, 1, 1])?;
-        y.try_add(&b)
+        match &self.b {
+            // bias [O] -> [1, O, 1, 1, 1] broadcasts over N, Do, Ho, Wo.
+            Some(b) => y.try_add(&b.tensor().reshape(vec![1, self.out_ch, 1, 1, 1])?),
+            None => Ok(y),
+        }
     }
     fn parameters(&self) -> Vec<Param> {
-        vec![self.w.clone(), self.b.clone()]
+        let mut ps = vec![self.w.clone()];
+        ps.extend(self.b.clone());
+        ps
     }
 }
 

@@ -4,7 +4,7 @@ use hodu_core::{Ctx, Error, Tensor};
 
 pub struct ConvTranspose2d {
     w: Param,
-    b: Param,
+    b: Option<Param>,
     out_ch: usize,
     stride: (usize, usize),
     padding: (usize, usize),
@@ -27,11 +27,22 @@ impl ConvTranspose2d {
         output_padding: (usize, usize),
         seed: u64,
     ) -> ConvTranspose2d {
-        ConvTranspose2d::with_init(ctx, in_ch, out_ch, kernel, stride, padding, output_padding, seed, Init::HeUniform)
+        ConvTranspose2d::with_init(
+            ctx,
+            in_ch,
+            out_ch,
+            kernel,
+            stride,
+            padding,
+            output_padding,
+            seed,
+            Init::HeUniform,
+            true,
+        )
     }
 
     /// Same as [`ConvTranspose2d::new`], with a chosen weight initializer. `fan_in = C*KH*KW`,
-    /// `fan_out = O*KH*KW`.
+    /// `fan_out = O*KH*KW`. `bias=false` drops the bias (no Param, no bias add).
     #[allow(clippy::too_many_arguments)]
     pub fn with_init(
         ctx: &Ctx,
@@ -43,6 +54,7 @@ impl ConvTranspose2d {
         output_padding: (usize, usize),
         seed: u64,
         init: Init,
+        bias: bool,
     ) -> ConvTranspose2d {
         let (kh, kw) = kernel;
         let fan_in = in_ch * kh * kw;
@@ -57,7 +69,7 @@ impl ConvTranspose2d {
         };
         ConvTranspose2d {
             w: Param::new(ctx, w, vec![in_ch, out_ch, kh, kw]),
-            b: Param::new(ctx, vec![0.0; out_ch], vec![out_ch]),
+            b: bias.then(|| Param::new(ctx, vec![0.0; out_ch], vec![out_ch])),
             out_ch,
             stride,
             padding,
@@ -76,12 +88,16 @@ impl ConvTranspose2d {
 impl Module for ConvTranspose2d {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
         let y = x.conv_transpose2d(self.w.tensor(), self.stride, self.padding, self.output_padding, self.dilation)?;
-        // bias [O] -> [1, O, 1, 1] broadcasts over N, Ho, Wo.
-        let b = self.b.tensor().reshape(vec![1, self.out_ch, 1, 1])?;
-        y.try_add(&b)
+        match &self.b {
+            // bias [O] -> [1, O, 1, 1] broadcasts over N, Ho, Wo.
+            Some(b) => y.try_add(&b.tensor().reshape(vec![1, self.out_ch, 1, 1])?),
+            None => Ok(y),
+        }
     }
     fn parameters(&self) -> Vec<Param> {
-        vec![self.w.clone(), self.b.clone()]
+        let mut ps = vec![self.w.clone()];
+        ps.extend(self.b.clone());
+        ps
     }
 }
 

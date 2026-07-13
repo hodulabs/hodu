@@ -4,7 +4,7 @@ use hodu_core::{Ctx, Error, Tensor};
 
 pub struct Conv1d {
     w: Param,
-    b: Param,
+    b: Option<Param>,
     out_ch: usize,
     stride: usize,
     padding: usize,
@@ -23,11 +23,11 @@ impl Conv1d {
         padding: usize,
         seed: u64,
     ) -> Conv1d {
-        Conv1d::with_init(ctx, in_ch, out_ch, kernel, stride, padding, seed, Init::HeUniform)
+        Conv1d::with_init(ctx, in_ch, out_ch, kernel, stride, padding, seed, Init::HeUniform, true)
     }
 
     /// Same as [`Conv1d::new`], with a chosen weight initializer. `fan_in = C*K`,
-    /// `fan_out = O*K`.
+    /// `fan_out = O*K`. `bias=false` drops the bias (no Param, no bias add).
     #[allow(clippy::too_many_arguments)]
     pub fn with_init(
         ctx: &Ctx,
@@ -38,6 +38,7 @@ impl Conv1d {
         padding: usize,
         seed: u64,
         init: Init,
+        bias: bool,
     ) -> Conv1d {
         let k = kernel;
         let fan_in = in_ch * k;
@@ -52,7 +53,7 @@ impl Conv1d {
         };
         Conv1d {
             w: Param::new(ctx, w, vec![out_ch, in_ch, k]),
-            b: Param::new(ctx, vec![0.0; out_ch], vec![out_ch]),
+            b: bias.then(|| Param::new(ctx, vec![0.0; out_ch], vec![out_ch])),
             out_ch,
             stride,
             padding,
@@ -71,12 +72,16 @@ impl Conv1d {
 impl Module for Conv1d {
     fn forward(&self, x: &Tensor) -> Result<Tensor, Error> {
         let y = x.conv1d(self.w.tensor(), self.stride, self.padding, self.dilation)?;
-        // bias [O] -> [1, O, 1] broadcasts over N, Lo.
-        let b = self.b.tensor().reshape(vec![1, self.out_ch, 1])?;
-        y.try_add(&b)
+        match &self.b {
+            // bias [O] -> [1, O, 1] broadcasts over N, Lo.
+            Some(b) => y.try_add(&b.tensor().reshape(vec![1, self.out_ch, 1])?),
+            None => Ok(y),
+        }
     }
     fn parameters(&self) -> Vec<Param> {
-        vec![self.w.clone(), self.b.clone()]
+        let mut ps = vec![self.w.clone()];
+        ps.extend(self.b.clone());
+        ps
     }
 }
 

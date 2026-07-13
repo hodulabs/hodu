@@ -19,11 +19,13 @@
 //! All little-endian. `data_offset` is relative to the DATA REGION start. The region base is
 //! 4K-aligned (the mmap page unit) and each tensor is 64B-aligned within it, so a zero-copy view
 //! is SIMD-friendly at a small padding cost.
+mod descriptor;
 mod mmap;
 
 pub use mmap::MmapModel;
 
 use crate::nn::QuantDescriptor;
+use descriptor::{read_descriptors, write_descriptors};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Seek, Write};
 use std::path::Path;
@@ -40,10 +42,6 @@ pub(super) const K_PARAM: u8 = 0; // learnable weight
 pub(super) const K_BUFFER: u8 = 1; // non-learnable f32 state (e.g. BatchNorm running stats)
 pub(super) const K_OPTIM: u8 = 2; // optimizer moment / step
 pub(super) const K_QBUFFER: u8 = 3; // non-learnable raw-byte state (e.g. a packed quant weight)
-
-// quant-descriptor scheme tags: 0 = affine group-wise (weight-only int4/int8), the only scheme
-// today. Reserved: GPTQ/AWQ/MX/codebook get their own tag when added.
-const SCHEME_AFFINE: u8 = 0;
 
 pub(super) const DT_F32: u8 = 0; // f32-LE payload
 pub(super) const DT_U8: u8 = 1; // raw u8 payload (packed quant weight)
@@ -157,15 +155,7 @@ pub(super) fn write_container(
         m.write_all(&o.to_le_bytes())?; // data_offset (into the data region)
         m.write_all(&(t.data.len() as u64).to_le_bytes())?; // nbytes
     }
-    m.write_all(&(descriptors.len() as u32).to_le_bytes())?;
-    for d in descriptors {
-        write_str(&mut m, &d.weight_fqn)?;
-        m.write_all(&[SCHEME_AFFINE, d.bits])?;
-        m.write_all(&(d.group_size as u64).to_le_bytes())?;
-        m.write_all(&[d.symmetric as u8])?;
-        write_str(&mut m, &d.scales_fqn)?;
-        write_str(&mut m, d.mins_fqn.as_deref().unwrap_or(""))?; // empty = none
-    }
+    write_descriptors(&mut m, descriptors)?;
     m.write_all(&(graph.len() as u64).to_le_bytes())?; // always present (0 len if none)
     m.write_all(graph)?;
 
@@ -226,30 +216,7 @@ pub(super) fn read_meta(r: &mut (impl Read + Seek)) -> io::Result<(Vec<TensorMet
         metas.push(TensorMeta { name, kind, dtype, shape, offset, nbytes });
     }
     // quant-descriptor table: 0 for a non-quant model.
-    let nd = read_u32(r)? as usize;
-    let mut descriptors = Vec::with_capacity(nd);
-    for _ in 0..nd {
-        let weight_fqn = read_str(r)?;
-        let mut sb = [0u8; 2];
-        r.read_exact(&mut sb)?;
-        let (scheme, bits) = (sb[0], sb[1]);
-        if scheme != SCHEME_AFFINE {
-            return Err(inval(format!("quant descriptor '{weight_fqn}': unsupported scheme tag {scheme}")));
-        }
-        let group_size = read_u64(r)? as usize;
-        let mut symb = [0u8; 1];
-        r.read_exact(&mut symb)?;
-        let scales_fqn = read_str(r)?;
-        let mins = read_str(r)?;
-        descriptors.push(QuantDescriptor {
-            weight_fqn,
-            bits,
-            group_size,
-            symmetric: symb[0] != 0,
-            scales_fqn,
-            mins_fqn: if mins.is_empty() { None } else { Some(mins) },
-        });
-    }
+    let descriptors = read_descriptors(r)?;
     // runnable-graph section: always a [u64 len][bytes] block (len 0 for a weights-only file).
     let glen = read_u64(r)? as usize;
     let mut graph = vec![0u8; glen];

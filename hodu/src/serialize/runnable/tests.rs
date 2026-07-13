@@ -1,7 +1,9 @@
 use super::*;
 use crate::Ctx;
-use crate::kurumi::{CpuBackend, serialize_graph};
-use crate::nn::{Embedding, Linear};
+use crate::Tensor;
+use crate::kurumi::{CpuBackend, InputBinding, InputRole, Storage, serialize_graph};
+use crate::nn::{Embedding, Linear, Module};
+use crate::serialize::container::read_container;
 
 // A runnable artifact saved from a TRAINING Ctx must prune the backward nodes, then load and
 // run from the file alone -- weights from the rows, the runtime input from the caller --

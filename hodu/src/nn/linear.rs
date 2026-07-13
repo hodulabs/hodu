@@ -1,5 +1,5 @@
 //! Affine layer `y = x @ w + b`, with `w: (in, out)` and `b: (out,)`.
-use crate::nn::{Init, Module, Param, kaiming_normal, uniform, xavier_uniform};
+use crate::nn::{Init, Module, Param, kaiming_normal, normal, uniform, xavier_normal, xavier_uniform};
 use hodu_core::{Ctx, Error, Tensor};
 
 pub struct Linear {
@@ -20,6 +20,8 @@ impl Linear {
             Init::HeUniform => uniform(n, 1.0 / (in_f as f32).sqrt(), seed),
             Init::XavierUniform => xavier_uniform(n, in_f, out_f, seed),
             Init::KaimingNormal => kaiming_normal(n, in_f, seed),
+            Init::Normal(std) => normal(n, std, seed),
+            Init::XavierNormal => xavier_normal(n, in_f, out_f, seed),
         };
         Linear { w: Param::new(ctx, w, vec![in_f, out_f]), b: Param::new(ctx, vec![0.0; out_f], vec![out_f]) }
     }

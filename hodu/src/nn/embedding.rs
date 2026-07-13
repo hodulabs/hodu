@@ -1,5 +1,5 @@
 //! Token embedding: a `[vocab, d]` lookup table gathered by integer token ids.
-use crate::nn::{Init, Module, Param, kaiming_normal, uniform, xavier_uniform};
+use crate::nn::{Init, Module, Param, kaiming_normal, normal, uniform, xavier_normal, xavier_uniform};
 use hodu_core::{Ctx, Error, Tensor};
 
 /// Maps integer token ids to `d`-dim rows of a learned `[vocab, d]` table.
@@ -24,6 +24,8 @@ impl Embedding {
             Init::HeUniform => uniform(n, 1.0 / (d as f32).sqrt(), seed),
             Init::XavierUniform => xavier_uniform(n, vocab, d, seed),
             Init::KaimingNormal => kaiming_normal(n, vocab, seed),
+            Init::Normal(std) => normal(n, std, seed),
+            Init::XavierNormal => xavier_normal(n, vocab, d, seed),
         };
         Embedding { weight: Param::new(ctx, w, vec![vocab, d]) }
     }

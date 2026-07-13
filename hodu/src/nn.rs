@@ -21,15 +21,15 @@ mod transformer;
 
 pub use activation::{Gelu, Relu, Sigmoid, Silu, Tanh};
 pub use attention::MultiHeadAttention;
-pub use conv::Conv2d;
+pub use conv::{Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d};
 pub use dropout::Dropout;
 pub use embedding::Embedding;
 pub use flatten::Flatten;
-pub use init::{Init, kaiming_normal, normal, uniform, xavier_uniform};
+pub use init::{Init, kaiming_normal, normal, uniform, xavier_normal, xavier_uniform};
 pub use leaf::{Buffer, Param, QBuffer};
 pub use linear::Linear;
 pub use norm::{BatchNorm, BatchNorm1d, BatchNorm2d, GroupNorm, InstanceNorm, LayerNorm, RmsNorm};
-pub use pool::{AvgPool2d, MaxPool2d};
+pub use pool::{AvgPool1d, AvgPool2d, AvgPool3d, MaxPool1d, MaxPool2d, MaxPool3d};
 pub use quant::QuantLinear;
 
 /// A quantized weight's self-describing scheme, persisted in the `.hodu` container's

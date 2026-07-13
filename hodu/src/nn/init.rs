@@ -7,6 +7,8 @@ pub enum Init {
     HeUniform,
     XavierUniform,
     KaimingNormal,
+    Normal(f32),
+    XavierNormal,
 }
 
 // splitmix64 uniform draw in [0,1).
@@ -29,6 +31,12 @@ pub fn uniform(n: usize, bound: f32, seed: u64) -> Vec<f32> {
 pub fn xavier_uniform(n: usize, fan_in: usize, fan_out: usize, seed: u64) -> Vec<f32> {
     let bound = (6.0 / (fan_in + fan_out) as f32).sqrt();
     uniform(n, bound, seed)
+}
+
+/// Xavier/Glorot normal: `N(0, std^2)` with `std = sqrt(2/(fan_in+fan_out))`.
+pub fn xavier_normal(n: usize, fan_in: usize, fan_out: usize, seed: u64) -> Vec<f32> {
+    let std = (2.0 / (fan_in + fan_out) as f32).sqrt();
+    normal(n, std, seed)
 }
 
 /// Normal init `N(0, std^2)` (Box-Muller from splitmix64 uniforms).

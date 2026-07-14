@@ -16,7 +16,7 @@ pub use crate::optim::{
     accumulate_grads, clip_grad_norm, grad_values, scale_grads,
 };
 pub use crate::serialize::{
-    MmapModel, RunnableModel, apply_safetensors, load, load_checkpoint, load_mmap, load_runnable, load_safetensors,
-    save, save_checkpoint, save_multi, save_runnable,
+    GgufValue, MmapModel, RunnableModel, apply_gguf, apply_safetensors, load, load_checkpoint, load_gguf, load_mmap,
+    load_runnable, load_safetensors, save, save_checkpoint, save_multi, save_runnable,
 };
 pub use crate::{Ctx, Error, Tensor};

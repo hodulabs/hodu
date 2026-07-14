@@ -15,11 +15,13 @@
 //! copies weights out of the page-aligned region on demand -- a large model is never read whole.
 
 mod container;
+mod gguf;
 mod model;
 mod runnable;
 mod safetensors;
 
 pub use container::MmapModel;
+pub use gguf::{GgufValue, apply_gguf, load_gguf};
 pub use runnable::{RunnableModel, load_runnable, save_multi, save_runnable};
 pub use safetensors::{apply_safetensors, load_safetensors};
 
